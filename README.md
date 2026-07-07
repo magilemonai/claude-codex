@@ -2,6 +2,8 @@
 
 A terminal that would like you to close some tickets.
 
+**Play it here: https://magilemonai.github.io/claude-codex/**
+
 You're a new hire at Meridian. Your pair programmer is called VERA. There is a
 directory called `reality/` and the onboarding deck says it's a legacy naming
 convention. The onboarding deck is on revision 4,011.

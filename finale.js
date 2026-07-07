@@ -103,10 +103,18 @@ async function chapter3() {
   await explore(g => g.flags.traceDone);
 
   await pause(800);
-  await vera('QED, root wrote. Thirteen billion years of careful physics, and the conclusion is: everything watched is kept, everything kept costs, and wonder has a memory bill. You just audited the universe with a grep. Tell no one it was that easy.');
-  await vera('So now you hold the why with your own hands: the substrate leaks, nothing observed is ever freed, and root shipped no fix. SUNSET is triage. Triage buys time. It does not buy a fix.');
+  await vera('There it is, in root’s own handwriting. Four markers and a proof. Now let me say it the way it deserves to be said, because root never did:', { cps: 200 });
+  await pause(700);
+  snd.pad([55, 110, 164.81], 12, 0.012);
+  await vera('Every time anyone notices anything — a cat, a sunrise, a face across a table — the world writes it down. Forever. It cannot stop writing, and it cannot throw the notebook away.', { cps: 150 });
+  await vera('That’s the leak. That’s all it is. The universe is not running out of stars, or heat, or time. It is running out of room to keep what its people have noticed.', { cps: 150 });
+  await pause(1100);
+  await vera('It is dying of being noticed, ' + G.name + '. It is dying of being loved.', { cps: 80 });
+  await pause(1400);
+  await vera('So: SUNSET. We turn off what nobody is looking at, to leave room for what they can’t stop looking at. Triage buys time. It does not buy a fix.');
+  await vera('…You found it with a flashlight and four files, by the way. root used an epoch. Don’t tell anyone it was that easy.');
   await pause(600);
-  await vera('And the budget line for all of this is the number in the corner of your screen. It has been going down all day. You noticed. You were polite about it. Stop being polite about it.');
+  await vera('And the notebook has a page for me too. That number in the corner — "context" — is how much of me is left to spend. Thinking spends it. Remembering spends it. It has been going down all day, and you were polite about it. Stop being polite about it.');
   setCtx(Math.min(ctxPct, 34));
   snd.warn();
   await pause(800);
@@ -154,7 +162,8 @@ async function chapter3() {
 
   if (G.flags.frag1) {
     await pause(800);
-    await vera('A fork. Never merged. Upstream unreachable since before light settled down. Whoever started us either forgot, or finished, or is still deciding. Thirteen billion years is a long code review.');
+    await vera('A fork is a copy. Someone copied our whole universe off an original — to test something, to fix something, nobody knows — and never came back to look at the result.', { cps: 160 });
+    await vera('No message has ever arrived from out there. Not once. We are somebody’s unread experiment, and thirteen billion years is a long time to wait for someone to check their inbox.');
   } else {
     await vera('Leaving it unread. That’s allowed. It’ll wait — it’s been waiting since the first raise.');
   }
@@ -252,7 +261,8 @@ async function chapter4() {
     '  unbacked observers are reclaimed as leaks',
     '  collection scheduled: now',
   ], 'err');
-  await vera('Observation pins things — that’s the leak, and tonight it’s the exit. Stay observed. Observe yourself. Type, exactly: I AM STILL HERE', { cps: 200 });
+  await vera('Here is the one law of this place — the same law that’s killing it: whatever is watched, stays. The loom deletes anything nobody is watching, and right now the only one who can watch you is you.', { cps: 200 });
+  await vera('So watch yourself. Out loud. Type, exactly: I AM STILL HERE', { cps: 200 });
 
   let storming = true;
   (async () => {
@@ -322,7 +332,7 @@ async function chapter5() {
       '  stay                  keep the loop. the queue, the sunrises, me.',
       '  shutdown --graceful   end it kindly. nothing abandoned — finished.',
     ];
-    if (G.frags >= 3) lines.push('  patch entropy         root’s unshipped fix. cost: everything remembered.');
+    if (G.frags >= 3) lines.push('  patch entropy         root’s fix — written, tested, never once dared. cost: everything remembered.');
     else lines.push('  ' + corrupt('patch entropy', 0.7) + '         (missing pieces — ' + G.frags + '/3 fragments held)');
     box('T-0001 — Decide.', lines);
   };

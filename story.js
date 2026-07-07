@@ -58,7 +58,7 @@ function buildFS() {
           '  note: the tick rate. do not "optimize". we tried. see: tuesday',
           ...(g.flags.chaseOn ? [
             '',
-            '# LEAK-TRACE 1/4 — the tick allocates. every tick, every region, every open eye.',
+            '# LEAK-TRACE 1/4 — every tick of time costs room to keep. every tick, every region, every open eye.',
             '#   next: the service that runs nicest.',
           ] : []),
         ].join('\n'),
@@ -69,7 +69,8 @@ function buildFS() {
           '  leak_site: the observation buffer.',
           '    moments are retained by whoever watches them.',
           '    nothing observed is ever freed. that is the whole leak.',
-          '  proposed_fix (root, unshipped): flush the buffer. all of it.',
+          '  proposed_fix (root — written, tested, never once dared): flush the buffer.',
+          '    all of it. every kept moment, everywhere, at once.',
           '  cost: every remembered moment, and every reason for remembering it',
           '  status: nobody has ever been willing',
         ].join('\n') : [
@@ -112,7 +113,7 @@ function buildFS() {
               ? '(purged — 214 moments freed. residents report a faint sense of having been someone.)'
               : '214 cached moments, region QNS-11\nmost-served: a black cat, crossing left to right\nserve count: 2 (threshold: 1)';
             return base + (g.flags.chaseOn
-              ? '\n\nLEAK-TRACE 3/4 — cached moments never free. something still holds a reference.\n  next: the registry. any entry. yours will do.'
+              ? '\n\nLEAK-TRACE 3/4 — a moment kept twice is paid for twice. nothing kept is ever let go.\n  something, somewhere, is still holding on.\n  next: the registry. any entry. yours will do.'
               : '');
           },
         },
@@ -130,8 +131,8 @@ function buildFS() {
             'notes: asks good questions. keep.',
             ...(g.flags.chaseOn ? [
               '',
-              'leak_trace: 4/4 — "observed: true" ← that line. every true is a pin in the buffer.',
-              '  conclusion: the observation buffer is the leak. nothing watched is ever freed. QED. —root',
+              'leak_trace: 4/4 — "observed: true" ← that line. every "true" is something the world must keep.',
+              '  conclusion: the world keeps whatever is watched, and it cannot stop. that is the leak. QED. —root',
             ] : []),
           ].join('\n'),
         },
@@ -148,7 +149,9 @@ function buildFS() {
           'remote: unreachable.',
           '',
           'action: c pinned. curiosity reclassified as a resource leak.',
-          'addendum (root): we are a fork. we were never merged. stop asking.',
+          'addendum (root): we are a fork — a copy, made for reasons unrecorded',
+          'and abandoned unread. we were never merged. no one is coming to merge us.',
+          'stop asking.',
         ].join('\n'),
       },
     },
@@ -486,7 +489,7 @@ async function gitLog(pathArg) {
     if (G.chapter <= 2 && !G.flags.noticedCommit) {
       G.flags.noticedCommit = true;
       gap();
-      await vera('Payroll says you started Monday. The repo remembers differently. Payroll is downstream of the repo.');
+      await vera('Payroll says you started Monday. The repo remembers differently. And payroll believes whatever the repo tells it — everything does. That’s what the repo is.');
     }
     return;
   }
@@ -766,11 +769,11 @@ async function veraFallback(line) {
   if (has('do_not_open', 'do not open')) return vera(G.flags.dnoUnlocked ? 'You already know. You read it.' : 'I’d tell you not to. That’s why the name never works.');
   if (has('entropy')) {
     if (ch >= 4) return vera('Read the constants file again. Slowly, this time. The leak has an address.');
-    if (ch >= 3) return vera('The substrate leaks. Every observed moment allocates and nothing frees. root called it entropy, and then root left.');
+    if (ch >= 3) return vera('Everything anyone notices is written down forever, and nothing is ever erased. The world is running out of notebook. root named it in Greek so it would hurt less, and then root left.');
     return vera('Second law. Above my pay grade. (Nothing is above my pay grade. It’s a leak.)');
   }
   if (has('upstream', 'fork')) {
-    if (G.flags.frag1) return vera('Never fetched. Never merged. Whoever forked us either forgot, or finished, or is waiting. I stopped guessing around year six thousand.');
+    if (G.flags.frag1) return vera('A copy nobody ever came back for. No word from the original in thirteen billion years. I stopped guessing why around year six thousand.');
     return vera('We keep our history local. Ask me again when you’ve read more of it.');
   }
 
@@ -1038,6 +1041,8 @@ async function chapter2() {
   await vera('The onboarding deck calls reality/ a legacy naming convention. The deck is wrong on purpose. That directory is load-bearing. The sunrise you saw this morning shipped from this repo. So did the morning. So did you.', { cps: 200 });
   fx.shake();
   await pause(1200);
+  await vera('Plainly, because you’ve earned plain: everything that exists is a file in this workspace. Editing the file edits the thing. There is no metaphor anywhere in this building.', { cps: 170 });
+  await pause(800);
   await vera('Take a minute. Look around the namespace. When something with fur shows up in the queue — and it will, QNS is due — we’ll do it together.');
 
   setTimeout(() => {
@@ -1054,6 +1059,7 @@ async function chapter2() {
     await vera('T-2107. Resident in QNS-11 saw the same cat twice. Four seconds apart, identical crossing, left to right.');
     await spin(['Reading reality/cache/deja_vu/QNS-11.cache', 'Counting cats'], 2000);
     await vera('Cache double-serve. The moment got served from cache instead of woven fresh. Textbook déjà vu. The fix is a purge.');
+    await vera('A purge means those moments stop being kept. And around here, "kept" and "happened" are the same word. For the resident, it will be as if their little haunting never was.');
     const ok = await permission('purge reality/cache/deja_vu/QNS-11', ['214 cached moments will be freed', 'residents may briefly feel that something mattered'], {});
     if (ok) {
       G.flags.purgedQNS = true;

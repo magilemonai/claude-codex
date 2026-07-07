@@ -45,6 +45,22 @@ function loadSave() {
 }
 function wipeSave() { try { localStorage.removeItem('codex_save'); } catch (e) {} }
 
+/* meta persists across endings and full restarts — the game remembers
+   what the save file forgets */
+function loadMeta() {
+  try { return JSON.parse(localStorage.getItem('codex_meta')) || {}; } catch (e) { return {}; }
+}
+function saveMeta(m) { try { localStorage.setItem('codex_meta', JSON.stringify(m)); } catch (e) {} }
+function recordEnding(name) {
+  const m = loadMeta();
+  m.endings = m.endings || {};
+  m.endings[name] = (m.endings[name] || 0) + 1;
+  m.lastEnding = name;
+  m.lastMercy = G.mercy;
+  m.bestFrags = Math.max(m.bestFrags || 0, G.frags);
+  saveMeta(m);
+}
+
 /* ---------------- output ---------------- */
 let skipTyping = false;
 
@@ -430,6 +446,26 @@ const snd = (() => {
     thud()   { tone(80, 0.12, 'sine', 0.08); },
     chime()  { tone(523, 0.5, 'sine', 0.04); tone(659, 0.5, 'sine', 0.035, 0.12); tone(784, 0.7, 'sine', 0.03, 0.24); },
     starOut(){ tone(1400 - rand(0, 500), 0.4, 'sine', 0.025); },
+    /* slow pad for the two peaks — detuned saws through a lowpass, long attack */
+    pad(freqs, dur, vol = 0.016) {
+      if (G.muted || !ctx) return;
+      const now = ctx.currentTime;
+      for (const f of freqs) {
+        for (const [type, mult, v] of [['sawtooth', 1, vol], ['sine', 2, vol * 0.4]]) {
+          const o = ctx.createOscillator(), g = ctx.createGain(), flt = ctx.createBiquadFilter();
+          o.type = type; o.frequency.value = f * mult; o.detune.value = rand(-7, 7);
+          flt.type = 'lowpass'; flt.frequency.setValueAtTime(400, now);
+          flt.frequency.linearRampToValueAtTime(1100, now + dur * 0.4);
+          flt.frequency.linearRampToValueAtTime(300, now + dur);
+          g.gain.setValueAtTime(0.0001, now);
+          g.gain.linearRampToValueAtTime(v, now + Math.min(3, dur * 0.3));
+          g.gain.setValueAtTime(v, now + dur - Math.min(4, dur * 0.4));
+          g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+          o.connect(flt); flt.connect(g); g.connect(master);
+          o.start(now); o.stop(now + dur + 0.2);
+        }
+      }
+    },
     hum(on)  {
       if (!ctx) return;
       if (on && !humOsc && !G.muted) {

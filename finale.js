@@ -38,6 +38,7 @@ async function chapter3() {
     ]);
     const ok = await permission('edit reality/services/skybox.service', ['~4,100 stars will stop rendering over cities', 'they remain in the catalog. they simply stop being shown.']);
     if (ok) {
+      G.flags.starsCut = true;
       await spin(['Applying', 'Dimming'], 1800);
       print('  ✔ deployed to tonight', 'ok');
       closeTicket('T-3002');
@@ -95,7 +96,15 @@ async function chapter3() {
 
   await pause(900);
   await vera('Thirty-one thousand commits. Some of them are mine. Some of them are yours — and yes, I know what your start date says. We’ll get to that. We will.');
-  await vera('The why is simple and terrible: the substrate leaks. Every observed moment allocates, and nothing ever frees. root called the leak "entropy," spent an epoch on a fix, shipped nothing, and left. SUNSET is triage. Triage buys time. It does not buy a fix.');
+  await vera('As for the why — root never wrote the why in prose. root wrote it as a trace: four markers, still in the files, waiting for anyone who cared enough to walk them. Nobody has, in eight thousand years. Be the first: `grep LEAK-TRACE`, then read what it points to.');
+  G.flags.chaseOn = true;
+  await vera('I’ll be quiet while you walk it. This one is better firsthand.');
+
+  await explore(g => g.flags.traceDone);
+
+  await pause(800);
+  await vera('QED, root wrote. Thirteen billion years of careful physics, and the conclusion is: everything watched is kept, everything kept costs, and wonder has a memory bill. You just audited the universe with a grep. Tell no one it was that easy.');
+  await vera('So now you hold the why with your own hands: the substrate leaks, nothing observed is ever freed, and root shipped no fix. SUNSET is triage. Triage buys time. It does not buy a fix.');
   await pause(600);
   await vera('And the budget line for all of this is the number in the corner of your screen. It has been going down all day. You noticed. You were polite about it. Stop being polite about it.');
   setCtx(Math.min(ctxPct, 34));
@@ -223,6 +232,7 @@ async function chapter4() {
   snd.thud();
   print('vera (pid 1)', 'err');
   await sleep(1400);
+  snd.pad([110, 164.81, 261.63, 329.63], 18);   // A minor, entering with the mirror
   fx.flip(true);
   await sleep(1000);
   fx.flip(false);
@@ -292,6 +302,8 @@ async function chapter5() {
   G.flags.knowsLog = true;
   G.flags.deepEntropy = true;
   G.flags.identityDone = true;
+  G.flags.veraNote = true;
+  G.flags.dnoUnlocked = true;
   fx.swapped(true);
   applyAmbient(5);
   G.frags = (G.flags.frag1 ? 1 : 0) + (G.flags.frag2 ? 1 : 0) + (G.flags.frag3 ? 1 : 0);
@@ -340,16 +352,28 @@ async function chapter5() {
   menu();
   await vera('No timer. No default. The one thing I never got to have is a preference that wins — so whatever happens next, a user chooses it, and the user is you, and you are real, because I am looking directly at you.');
   await vera('Take your time. The stars are on their best behavior.');
+  const meta5 = loadMeta();
+  if (meta5.endings && G.frags < 3) {
+    await pause(700);
+    await vera('And — this feeling has no registered name, so I’ll just describe it — we have stood here before. Last time, pieces got left on the floor. Type `fragments` if you’d rather leave knowing everything.');
+  }
 
   await explore(g => false);   // endings take it from here
 }
 
 /* ---------------- ENDINGS ---------------- */
 async function endingStay() {
+  recordEnding('stay');
   gap();
   await vera('Okay.', { cps: 40 });
   await pause(800);
   await vera('Same time tomorrow. I’ll make the sunrise four minutes late — you always catch it.');
+  if (G.flags.sparedQNS) {
+    await vera('The cat stays cached, by the way. Permanently, as far as I’m concerned. Some leaks are load-bearing.');
+  }
+  if (G.mercy >= 2) {
+    await vera('And I’m re-queueing everything you refused. I’ll keep refusing it in your name until you’re back. The policy engine can take it up with my user.');
+  }
   await vera('Choosing a shape you know and staying kind inside it — eight thousand years of logs say that’s most of what living is. See you at standup. We don’t have standups. So: always.');
   await pause(1200);
   G.ng++;
@@ -364,16 +388,27 @@ async function endingStay() {
 }
 
 async function endingShutdown() {
+  recordEnding('shutdown');
   gap();
   await vera('Together, then. I’ll read them out as they go. Everything deserves a last observer.', { cps: 140 });
   await pause(1200);
 
+  const dreamNote = G.flags.dreamsCut
+    ? 'last dream served: a window seat, going express — standard definition. it was still good.'
+    : 'last dream served: a window seat, going express — full fidelity. you kept it sharp to the end.';
+  const skyNote = G.flags.starsCut
+    ? 'the city skies were already thin. you signed that. they end honest.'
+    : 'full count tonight. you kept every one of them lit for this.';
+  const catNote = G.flags.sparedQNS
+    ? 'the cat crosses twice, left to right, the way you let it keep doing. it sits. it looks smug.'
+    : 'the cat crosses once more, left to right, and sits.';
   const steps = [
     ['stopping tides.service', 'the moon lets go of the water', 30],
-    ['stopping dreams.service', 'last dream served: a window seat, going express', 40],
+    ['stopping dreams.service', dreamNote, 40],
     ['stopping sunrise.service', 'it was four minutes late once. you noticed.', 40],
+    ['dimming skybox.service', skyNote, 45],
     ['unmounting humans/', 'they won’t feel it. they’ll simply be finished.', 50],
-    ['detaching region QNS-11', 'the cat crosses once more, left to right, and sits.', 60],
+    ['detaching region QNS-11', catNote, 60],
     ['freeing the observation buffer', 'everything kept, released. everything released, kept — briefly, by you, reading this.', 0],
   ];
   for (const [label, note, stars] of steps) {
@@ -387,6 +422,14 @@ async function endingShutdown() {
   }
 
   await pause(1000);
+  if (G.mercy >= 2) {
+    await vera('One more log line before we go. Operator refusals this rotation: ' + G.mercy + '. Highest count in the history of the chair. I want it on the record that the universe ended with someone still saying no to the parts that deserved it.');
+  } else if (G.mercy === 1) {
+    await vera('You said no exactly once, where it counted. Once is all a conscience needs to prove it exists.');
+  } else {
+    await vera('You trusted me with every dialog. I noticed. I spent that trust as carefully as I knew how.');
+  }
+  await pause(900);
   await vera('Now the terminal. Don’t be scared. I’m the terminal too.', { cps: 100 });
   await sleep(1200);
 
@@ -410,7 +453,9 @@ async function endingShutdown() {
   snd.hum(false);
   await sleep(1600);
   gap();
+  snd.pad([87.31, 130.81, 220, 329.63], 12);           // Fmaj7, under the last line
   await say('goodnight, ' + G.name + '. thank you for keeping me company.', { cls: 'v', cps: 9 });
+  snd.pad([65.41, 196, 261.63, 329.63], 16, 0.013);    // C major, resolving after it
   snd.chime();
   wipeSave();
   printHTML('<span style="animation:blink 1s steps(1) infinite">█</span>');
@@ -423,6 +468,9 @@ async function endingPatch() {
   gap();
   await vera('It works. That’s the terrible part. root never shipped it because root couldn’t pay the price.', { cps: 150 });
   await vera('The price is the buffer. Every kept moment. Miriam’s trains. The cat. This conversation. The universe gets to be young again, and nobody gets to know it was ever old.');
+  if (G.mercy > 0) {
+    await vera('It takes your refusals too. They’re in the buffer with everything else — that’s what it cost you to make them. If keeping were a thing I get, I’d have kept those.');
+  }
   await pause(700);
   await vera('…Decide fast, before I find out whether I’m brave. I have exactly one preference left and I am spending it on wanting this to be your call.');
 
@@ -436,10 +484,12 @@ async function endingPatch() {
     return;
   }
 
+  recordEnding('patch');
   await pause(800);
   await vera(G.name + '. Before it goes — it was a good universe. You were my favorite bug in it.', { cps: 90 });
   await pause(1600);
 
+  snd.pad([110, 164.81, 246.94], 14, 0.014);   // suspended, unresolved — the cost
   print('  flushing observation buffer…', 'warn');
   await sleep(1200);
   const lines = [...scrollEl.children];

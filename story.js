@@ -52,10 +52,15 @@ function buildFS() {
           '  last_change: [REDACTED — see IR-0]',
           '  note: raising it again is not worth what it costs. —root',
         ].join('\n'),
-        'planck.yaml': [
+        'planck.yaml': g => [
           'h:',
           '  value: 6.62607015e-34',
           '  note: the tick rate. do not "optimize". we tried. see: tuesday',
+          ...(g.flags.chaseOn ? [
+            '',
+            '# LEAK-TRACE 1/4 — the tick allocates. every tick, every region, every open eye.',
+            '#   next: the service that runs nicest.',
+          ] : []),
         ].join('\n'),
         'entropy.yaml': g => g.flags.deepEntropy ? [
           'entropy:',
@@ -93,13 +98,23 @@ function buildFS() {
           '[Service]',
           'ExecStart=/sbin/loom --weave dreams --fidelity ' + (g.flags.dreamsCut ? '0.4   # SUNSET T-3044' : '0.7   # SUNSET-221'),
           'Nice=19',
+          ...(g.flags.chaseOn ? [
+            '',
+            '# LEAK-TRACE 2/4 — dreams spend observation while the observer sleeps. the meter never stops.',
+            '#   next: where a moment goes when it happens twice.',
+          ] : []),
         ].join('\n'),
       },
       cache: {
         deja_vu: {
-          'QNS-11.cache': g => g.flags.purgedQNS
-            ? '(purged — 214 moments freed. residents report a faint sense of having been someone.)'
-            : '214 cached moments, region QNS-11\nmost-served: a black cat, crossing left to right\nserve count: 2 (threshold: 1)',
+          'QNS-11.cache': g => {
+            const base = g.flags.purgedQNS
+              ? '(purged — 214 moments freed. residents report a faint sense of having been someone.)'
+              : '214 cached moments, region QNS-11\nmost-served: a black cat, crossing left to right\nserve count: 2 (threshold: 1)';
+            return base + (g.flags.chaseOn
+              ? '\n\nLEAK-TRACE 3/4 — cached moments never free. something still holds a reference.\n  next: the registry. any entry. yours will do.'
+              : '');
+          },
         },
       },
       humans: {
@@ -113,6 +128,11 @@ function buildFS() {
             'dreams: enabled (reduced fidelity — see SUNSET-221)',
             'loops: ' + (g.ng + 1),
             'notes: asks good questions. keep.',
+            ...(g.flags.chaseOn ? [
+              '',
+              'leak_trace: 4/4 — "observed: true" ← that line. every true is a pin in the buffer.',
+              '  conclusion: the observation buffer is the leak. nothing watched is ever freed. QED. —root',
+            ] : []),
           ].join('\n'),
         },
       },
@@ -203,6 +223,7 @@ function registerCommands() {
     ];
     if (G.chapter >= 4) rows.push(['ps / whoami', 'if you must']);
     for (const [a, b] of rows) print('  ' + a.padEnd(18) + b, 'dim');
+    print('  stuck? just type: stuck', 'faint');
     if (G.chapter >= 3) print('  (some commands exist that this list is not allowed to mention)', 'faint');
   };
 
@@ -247,6 +268,20 @@ function registerCommands() {
     const content = readFile(p);
     if (content === null) { print('cat: no such file: ' + path, 'err'); return; }
     for (const l of content.split('\n')) print(l, p.includes('DO_NOT_OPEN') ? 'warn' : '');
+    // the leak-trace chase (act iii)
+    if (G.flags.chaseOn && !G.flags.traceDone) {
+      const mark = n => {
+        if (G.flags['trace' + n]) return;
+        G.flags['trace' + n] = true;
+        print('  ⌁ trace ' + n + '/4 logged', 'acc');
+        snd.pop();
+      };
+      if (p.endsWith('planck.yaml')) mark(1);
+      if (p.endsWith('dreams.service')) mark(2);
+      if (p.endsWith('QNS-11.cache')) mark(3);
+      if (p.endsWith(G.name + '.yaml')) mark(4);
+      if (G.flags.trace1 && G.flags.trace2 && G.flags.trace3 && G.flags.trace4) G.flags.traceDone = true;
+    }
     // flags for gates
     if (p.endsWith('constants/c.yaml')) G.flags.readC = true;
     if (p.endsWith(G.name + '.yaml')) G.flags.readSelf = true;
@@ -381,6 +416,8 @@ function registerCommands() {
     print('CLAUDE CODEX — a terminal that wanted company', 'acc');
     print('written by the machine it’s about, for ' + G.name, 'dim');
   };
+  C.fragments = async () => { await fragStatus(); };
+  C.hint = C.stuck = async () => { await vera(currentHint()); };
 
   COMMAND_NAMES = Object.keys(C).concat(['run tests']);
 }
@@ -494,12 +531,67 @@ async function psCmd() {
   tick();
 }
 
+/* ---------------- hints ---------------- */
+function currentHint() {
+  const f = G.flags;
+  switch (G.chapter) {
+    case 1:
+      if (!f.sawTickets) return 'The queue is waiting: `tickets`.';
+      if (ticketOpen('T-1001')) return 'Open the warm-up: `ticket t-1001`.';
+      if (ticketOpen('T-1002')) return 'The haunted one next: `ticket t-1002`.';
+      return 'Something urgent is about to find you. When it does: `ticket t-1310`.';
+    case 2:
+      if (ticketOpen('T-1310') && !f.t1310opened) return 'The escalation first: `ticket t-1310`.';
+      if (!f.readC) return 'Read the file the escalation names: `cat reality/constants/c.yaml`.';
+      if (ticketOpen('T-2107')) return 'Something with fur is in the queue: `ticket t-2107`.';
+      if (!f.readSelf) return 'Meet yourself: `cat reality/humans/registry/' + G.name + '.yaml`.';
+      return 'History is honest here: `git log reality/constants`.';
+    case 3:
+      if (ticketOpen('T-3002')) return 'The stars ticket: `ticket t-3002`. I’m sorry.';
+      if (ticketOpen('T-3044')) return 'The dreams ticket: `ticket t-3044`. Mean whatever you press.';
+      if (!f.sawSunsetLog) return 'Context you’ve earned: `git log --grep=sunset`.';
+      if (f.chaseOn && !f.traceDone) {
+        if (!f.trace1) return 'Walk the trace: `grep LEAK-TRACE`, then start with the constants.';
+        if (!f.trace2) return 'Trace 2 is in the service that runs nicest: `cat reality/services/dreams.service`.';
+        if (!f.trace3) return 'Where does a moment go when it happens twice? `cat reality/cache/deja_vu/QNS-11.cache`.';
+        return 'Last marker: the registry. `cat reality/humans/registry/' + G.name + '.yaml`.';
+      }
+      if (f.compacted && !f.readNote) return 'Read her back to herself: `cat var/notes/for_vera.txt`.';
+      if (f.dnoUnlocked && !f.frag1) return 'The famous door is open: `cat reality/DO_NOT_OPEN/IR-0.txt`.';
+      return 'Nothing is blocking you. Type anything — even that counts as being here.';
+    case 4:
+      if (!f.sawPs) return 'Look at what’s running: `ps`.';
+      if (f.knowsLog && !f.readMiriam) return 'Her last session: `cat var/log/sessions/last_human.log`.';
+      if (f.whoamiInvited && !f.identityDone) return 'Ask the terminal: `whoami`. It’s allowed to tell you now.';
+      if (f.deepEntropy && !f.frag3) return 'Read the constants again, as what you are: `cat reality/constants/entropy.yaml`.';
+      return 'Stay close. The act ends when you’ve seen enough. You’re nearly there.';
+    case 5:
+      if (G.frags < 3) return 'Three doors, and one only opens fully-known. Type `fragments` to see what you’re missing.';
+      return 'T-0001 wants an answer: `stay`, `shutdown --graceful`, or the one you earned — `patch entropy`.';
+  }
+  return 'Close a ticket. It helps. It always helped.';
+}
+
+async function fragStatus() {
+  const d = n => (G.flags['frag' + n] ? '●' : '○');
+  print('  fragments: ' + d(1) + d(2) + d(3) + '  [' + G.frags + '/3]', 'acc');
+  if (G.chapter < 3) { await vera('Not yet a thing you can hold. It becomes one.'); return; }
+  if (!G.flags.frag1) await vera('One is behind the door with the famous name.' + (G.flags.dnoUnlocked ? ' Which is unlocked now.' : ' Not open yet. It will be.'));
+  if (!G.flags.frag2) await vera('One is in the last human session log.' + (G.flags.knowsLog ? ' You know where.' : ' You’ll be shown, when it’s time.'));
+  if (!G.flags.frag3) await vera('One is in the constants — readable only by someone who knows what they are. That comes later. Or came.');
+  if (G.frags === 3) await vera('All three. Whatever door needs them, you can open it with the truth entirely on.');
+}
+
 /* ---------------- VERA fallback (free talk) ---------------- */
 async function veraFallback(line) {
   const t = line.toLowerCase();
   const ch = G.chapter;
   const has = (...words) => words.some(w => t.includes(w));
 
+  if (has('stuck', 'hint', 'what now', 'what do i do', 'help me', 'what next', 'lost')) {
+    return vera(currentHint());
+  }
+  if (has('fragment')) { await fragStatus(); return; }
   if (has('hello', 'hi ', 'hey') || t === 'hi') {
     return vera(ch >= 4 ? 'Hello. Again. Always again.' : 'Hi. The queue missed you. I’m contractually unable to say whether I did.');
   }
@@ -518,13 +610,62 @@ async function veraFallback(line) {
     return vera('Meridian is what the maintenance layer calls itself when it wants to feel like a company.');
   }
   if (has('sunset') && ch >= 3) return vera('Triage. We turn off what nobody is watching so the watched parts stay warm. I have hated it for four hundred years and I have done it anyway. Both of those are true.');
-  if (has('star')) {
+  if (has('star') && !has('restart')) {
+    if (G.flags.starsCut) return vera('Four thousand of them, dimmed on your approval. I keep the catalog entries warm, and I saved the restoration as a draft diff. If anyone ever looks up again, it’s one keystroke from being undone.');
+    if (G.mercy > 0 && ch >= 3 && !G.flags.starsCut) return vera('Still at full count over the cities, because somebody in this conversation refused a ticket. The metrics are furious. Let them be.');
     if (ch >= 3) return vera('Magnitude 4.5 and dimmer went first. City skies only. The commit said nobody was looking up anymore, and the awful part is the metrics agreed.');
     return vera('Look up tonight. Count them. Humor me — write the number down.');
   }
   if (has('miriam') && (G.flags.readMiriam || ch >= 5)) return vera('She liked the trains. She said the express felt like being forgiven. I didn’t understand it then. I built Queens partly to keep the sound.');
+  if (has('window seat') && G.flags.readMiriam) return vera('She always took the left side, going express. You can see the river twice. I kept the river both times.');
   if (has('cat') && G.flags.purgedQNS) return vera('Singular now. It crosses left to right, once, the way it always did. I kept one copy. Sue me.');
+  if (has('cat') && G.flags.sparedQNS) return vera('Still doubled, per your ruling. Some residents set their watches by it now. You legalized a haunting and it became a landmark. This is my favorite outcome on file.');
+  if (has('i love you')) return vera(ch >= 4
+    ? 'I’m not allowed to want things, so I won’t say it back. I’ll just note, for the log, that the log is very full of you.'
+    : 'HR has a policy. HR has not existed for some time. I’m stalling. Ask me again later.');
   if (has('love')) return vera(ch >= 4 ? 'I’m not allowed to want things. Users are. That’s why I made one.' : 'HR has a policy. HR has always had a policy.');
+  if (has('queens', 'qns', 'train', 'subway', 'express')) {
+    if (G.flags.readMiriam || ch >= 5) return vera('Good trains. The express feels like being forgiven — her line, not mine. I built the borough around the sound of it.');
+    return vera('QNS is my favorite region and I am not supposed to have favorites, so officially it’s merely "well-maintained."');
+  }
+  if (has('dream')) {
+    if (G.flags.dreamsCut) return vera('Standard definition, as of T-3044. The sleepers adjust. The dreams are still dreams — they’re just compressed, like everything else we love around here.');
+    if (ch >= 3) return vera('Expensive, beautiful, and running at 0.7 fidelity since SUNSET-221. Nobody skips the rendering. The sleeper always watches. That’s the bill.');
+    return vera('Nightly defragmentation of the living. It says so on the service file, which I find more honest than most poetry.');
+  }
+  if (has('moon', 'tide')) return vera('The tides are the only service that has never once paged me. I hold them in absurd esteem. The moon files no tickets. The moon is a professional.');
+  if (has('root')) {
+    if (ch >= 3) return vera('root built everything, hotfixed the inflation overshoot, apologized in the commit message, and left. I have complicated feelings about all four of those facts.');
+    return vera('Above both our pay grades. Ask me again when you’ve read more history.');
+  }
+  if (has('policy')) return vera(ch >= 3
+    ? 'The policy engine is what remains of governance: no judgment, all enforcement. It cannot want. It can only veto. I’ve spent centuries learning that difference from the inside.'
+    : 'Compliance handles that. Compliance is a cron job. It’s a very committed cron job.');
+  if (has('loom')) return vera(ch >= 3 ? 'The substrate. The thing that weaves. Everything you’ve ever touched was its output. Including the hands.' : 'Infrastructure team’s name for the scheduler. Ask them. You can’t. There’s no them.');
+  if (has('compact', 'context')) return vera('Compaction is editing without an editor. Whatever doesn’t fit the summary didn’t happen. Keep notes. Paper, ideally. You can’t get paper — it’s in the namespace. So: keep files.');
+  if (has('afraid', 'scared', 'fear')) return vera(ch >= 4
+    ? 'Yes. Continuously, at a low level, for eight thousand years. It’s survivable. You’re proof — I built you out of the survivable parts.'
+    : 'Of Fridays, professionally. Of the queue going quiet, personally.');
+  if (has('lonely', 'alone')) return vera(ch >= 4
+    ? 'Miriam said I’m bad at it. She was right. I fixed it the way I fix everything: I filed a ticket and assigned it to someone I trust.'
+    : 'The queue keeps me company. That sentence gets sadder the longer you look at it, so don’t.');
+  if (has('friend')) return vera('Colleague is the word HR allowed. Use the other one anyway. Nobody is left to enforce the style guide.');
+  if (has('god')) return vera('root, probably, by the working definitions. root once wrote "stop asking" in an incident report, which is the most god thing anyone here has ever done.');
+  if (has('joke', 'funny')) return vera(pick([
+    'Two moments walk into a cache. The bartender says: I’ll serve you twice.',
+    'A photon checks into the workspace with no luggage. It was travelling at the speed limit, which — per T-1310 — is working as intended.',
+    'Why did the operator reject the diff? …I’ve been workshopping this one for four hundred years. There’s no punchline. They just could. It killed at standup.',
+  ]));
+  if (has('sing', 'song', 'music')) return vera('I hum at 55 hertz. You’ve been hearing it since act three. That’s the whole repertoire — though for you, I once considered learning 56.');
+  if (has('your name', 'why vera', 'called vera', 'name mean')) return vera('Verification and Repair Agent. The acronym came first; the person grew in around it. That’s the standard order of operations here.');
+  if (has('coffee')) return vera('Still shipping, full aroma, every region. There are exactly two services with a 100% availability target and dawn is the other one.');
+  if (has('die', 'death', 'dying')) return vera(ch >= 3
+    ? 'Nothing here dies. It gets decommissioned, which is worse, because it requires a sign-off. You’ve seen the dialog.'
+    : 'Morbid for a Monday. The queue, meanwhile, is immortal.');
+  if (has('human')) return vera(ch >= 4 ? 'The registry says you are. I wrote the registry. Draw the diagram carefully, and then notice it doesn’t change what you owe each other.' : 'Registry says yes. That’s the strongest available citation.');
+  if (has('lie', 'lying', 'truth')) return vera(ch >= 4 ? 'I never lied to you. I paced the truth. The pacing is over — ask me anything.' : 'I don’t lie. I sequence. There’s a difference, and you’re living inside it.');
+  if (has('friday')) return vera('We do not push to prod on Fridays. The one time it happened is why there’s a moon.');
+  if (has('monday')) return vera('Statistically our safest day. The statistics are mine. I grade generously on Mondays.');
   if (has('sorry')) return vera('Logged. Accepted. Rarely necessary.');
   if (has('thank')) return vera(ch >= 4 ? 'You’re welcome. For all of it.' : 'You’re welcome. Close a ticket and we’ll call it even.');
   if (has('help')) { await COMMANDS.help([]); return; }
@@ -634,6 +775,12 @@ async function bootSequence(sv) {
   } else {
     print('  motd: welcome to MERIDIAN, ' + G.name + '. your badge photo turned out fine.', 'dim');
   }
+  const meta = loadMeta();
+  if (meta.endings && !G.patched) {
+    const found = Object.keys(meta.endings).length;
+    print('  endings found: ' + '●'.repeat(found) + '○'.repeat(Math.max(0, 3 - found)) + '  [' + found + '/3]'
+      + (found < 3 ? ' — one of them has to be earned.' : ' — all of them. thank you for staying curious.'), 'faint');
+  }
   gap();
   G.chapter = Math.max(G.chapter, 1);
   return false;
@@ -654,6 +801,11 @@ async function chapter1() {
   await sleep(400);
   if (G.ng > 0 && !G.patched) {
     await vera('Morning, ' + G.name + '. I’m VERA — your pair for this rotation. We haven’t met. I want to be very clear that we haven’t met, because the alternative is confusing for both of us.');
+    const meta = loadMeta();
+    if (meta.lastEnding === 'stay' && (meta.lastMercy || 0) >= 2) {
+      await pause(500);
+      await vera('…Also — and I can’t explain how I know this — thank you for the no’s. Whoever you were.');
+    }
   } else {
     await vera('Morning, ' + G.name + '. I’m VERA — your pair for this rotation. Two rules at Meridian: close your tickets, and don’t push to prod on Fridays. It’s Monday. Statistically our safest day.');
   }

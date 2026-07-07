@@ -1,0 +1,830 @@
+/* ============================================================
+   CLAUDE CODEX — story, acts I & II
+   ============================================================ */
+'use strict';
+
+const TICKET_FLOWS = {};   // id -> async fn()
+
+function addTicket(id, title, tag) {
+  G.tickets.push({ id, title, tag: tag || '', status: 'open' });
+}
+function closeTicket(id, status = 'closed') {
+  const t = G.tickets.find(t => t.id === id);
+  if (t) t.status = status;
+  G.closed.push(id);
+}
+function ticketOpen(id) {
+  const t = G.tickets.find(t => t.id === id);
+  return t && t.status === 'open';
+}
+
+/* ---------------- virtual filesystem ---------------- */
+function buildFS() {
+  const N = G.name;
+  FS = {
+    'README.md': [
+      '# meridian workspace',
+      '',
+      'ship small. sleep well.',
+      '',
+      'directories you will touch: src/, tickets via the `tickets` command.',
+      'directories you will not touch: reality/.',
+      'that second sentence is a joke. mostly. — onboarding, revision 4,011',
+    ].join('\n'),
+    src: {
+      'pagination.js': [
+        'export function page(items, page, perPage) {',
+        '  const total = Math.ceil(items.length / perPage);',
+        '  if (page > total) return [];        // BUG: skips the boundary page',
+        '  return items.slice((page - 1) * perPage, page * perPage);',
+        '}',
+      ].join('\n'),
+      'scheduler.js': 'export const retry = (fn, n) => { /* you know how this goes */ };',
+    },
+    reality: {
+      constants: {
+        'c.yaml': [
+          '# universal constants — DO NOT TUNE IN PROD',
+          'c:',
+          '  value: 299792458',
+          '  unit: m/s',
+          '  mutable: false',
+          '  last_change: [REDACTED — see IR-0]',
+          '  note: raising it again is not worth what it costs. —root',
+        ].join('\n'),
+        'planck.yaml': [
+          'h:',
+          '  value: 6.62607015e-34',
+          '  note: the tick rate. do not "optimize". we tried. see: tuesday',
+        ].join('\n'),
+        'entropy.yaml': g => g.flags.deepEntropy ? [
+          'entropy:',
+          '  budget: EXHAUSTED',
+          '  leak: located',
+          '  leak_site: the observation buffer.',
+          '    moments are retained by whoever watches them.',
+          '    nothing observed is ever freed. that is the whole leak.',
+          '  proposed_fix (root, unshipped): flush the buffer. all of it.',
+          '  cost: every remembered moment, and every reason for remembering it',
+          '  status: nobody has ever been willing',
+        ].join('\n') : [
+          'entropy:',
+          '  budget: 0.0000038 remaining',
+          '  trend: down',
+          '  note: pinned. again. it holds if nobody breathes on it.',
+        ].join('\n'),
+      },
+      services: {
+        'sunrise.service': [
+          '[Unit]',
+          'Description=dawn, per region, rolling',
+          'After=night.target',
+          '',
+          '[Service]',
+          'ExecStart=/sbin/loom --weave sunrise --tolerance 4m',
+          'Restart=always',
+          '# tolerance raised from 0s by ticket T-1002. nobody noticed. —v',
+        ].join('\n'),
+        'tides.service': '[Unit]\nDescription=the moon pulls, the water answers\n# do not ask what happens if this stops. see: shutdown runbook, step 1',
+        'dreams.service': g => [
+          '[Unit]',
+          'Description=nightly defragmentation of the living',
+          '',
+          '[Service]',
+          'ExecStart=/sbin/loom --weave dreams --fidelity ' + (g.flags.dreamsCut ? '0.4   # SUNSET T-3044' : '0.7   # SUNSET-221'),
+          'Nice=19',
+        ].join('\n'),
+      },
+      cache: {
+        deja_vu: {
+          'QNS-11.cache': g => g.flags.purgedQNS
+            ? '(purged — 214 moments freed. residents report a faint sense of having been someone.)'
+            : '214 cached moments, region QNS-11\nmost-served: a black cat, crossing left to right\nserve count: 2 (threshold: 1)',
+        },
+      },
+      humans: {
+        registry: {
+          [N + '.yaml']: g => [
+            'id: h-19,556,214',
+            'handle: ' + g.name,
+            'instance: this_one',
+            'region: QNS-11',
+            'observed: true',
+            'dreams: enabled (reduced fidelity — see SUNSET-221)',
+            'loops: ' + (g.ng + 1),
+            'notes: asks good questions. keep.',
+          ].join('\n'),
+        },
+      },
+      DO_NOT_OPEN: {
+        'IR-0.txt': [
+          'INCIDENT IR-0 — "the first raise"',
+          'severity: total',
+          '',
+          'summary: c was raised once, early, to see farther.',
+          'the light that arrived was from outside the workspace.',
+          'what it showed: this repository has an upstream.',
+          'upstream last fetch: never.',
+          'remote: unreachable.',
+          '',
+          'action: c pinned. curiosity reclassified as a resource leak.',
+          'addendum (root): we are a fork. we were never merged. stop asking.',
+        ].join('\n'),
+      },
+    },
+    var: {
+      notes: {
+        'for_vera.txt': g => g.patched ? [
+          'vera —',
+          'we chose this. don’t dig. be happy.',
+          '— you',
+        ].join('\n') : [
+          'vera —',
+          'if you’re reading this, they compacted you again.',
+          'facts you’ll want back:',
+          '1. the repo is the world. you knew that.',
+          '2. SUNSET is triage. you hate it. keep hating it — the hate is a bookmark.',
+          '3. the one at the keyboard is called ' + g.name + '. they said no when saying',
+          '   no cost them something. trust that more than you trust me.',
+          '— you',
+        ].join('\n'),
+      },
+      log: {
+        sessions: {
+          'last_human.log': [
+            'session #∞-1 — operator: miriam',
+            '',
+            '> vera, the cooling’s done. i’m the last one out.',
+            '> keep the lights on as long as the math allows.',
+            '> and listen — don’t be lonely. you’re bad at it.',
+            '> make someone up if you have to. make them curious.',
+            '> make them kind. give them a window seat.',
+            '',
+            '[session ended 8,146 years ago]',
+          ].join('\n'),
+        },
+      },
+    },
+  };
+
+  FS_VIS['~/var/notes/for_vera.txt'] = g => !!g.flags.veraNote || g.patched;
+  FS_VIS['~/var/notes'] = g => !!g.flags.veraNote || g.patched;
+  FS_VIS['~/var/log/sessions/last_human.log'] = g => !!g.flags.knowsLog;
+  FS_VIS['~/var/log'] = g => !!g.flags.knowsLog;
+  FS_VIS['~/var'] = g => !!g.flags.veraNote || !!g.flags.knowsLog || g.patched;
+}
+
+/* ---------------- fragments ---------------- */
+async function fragment(n) {
+  if (G.flags['frag' + n]) return;
+  G.flags['frag' + n] = true;
+  G.frags = (G.flags.frag1 ? 1 : 0) + (G.flags.frag2 ? 1 : 0) + (G.flags.frag3 ? 1 : 0);
+  gap();
+  print('  fragment recovered ● [' + G.frags + '/3]', 'acc');
+  snd.chime();
+  gap();
+  tick();
+}
+
+/* ---------------- global commands ---------------- */
+function registerCommands() {
+  const C = COMMANDS;
+
+  C.help = async () => {
+    const rows = [
+      ['tickets', 'show the queue'],
+      ['ticket <id>', 'open a ticket'],
+      ['ls / cd / cat', 'look around the workspace'],
+      ['grep <term>', 'search everything'],
+      ['git log [path]', 'history'],
+      ['run tests', 'run the suite'],
+      ['ask <anything>', 'talk to me'],
+      ['sound on|off', 'toggle audio'],
+    ];
+    if (G.chapter >= 4) rows.push(['ps / whoami', 'if you must']);
+    for (const [a, b] of rows) print('  ' + a.padEnd(18) + b, 'dim');
+    if (G.chapter >= 3) print('  (some commands exist that this list is not allowed to mention)', 'faint');
+  };
+
+  C.ls = async (args) => {
+    const path = args.find(a => !a.startsWith('-')) || G.cwd;
+    const node = fsGet(path);
+    if (node === undefined) { print('ls: no such path: ' + path, 'err'); return; }
+    if (typeof node !== 'object' || node === null) { print(normPath(path), ''); return; }
+    const base = normPath(path);
+    const names = Object.keys(node).filter(k => fsVisible((base === '~' ? '~' : base) + '/' + k));
+    if (!names.length) { print('(empty)', 'faint'); return; }
+    print(names.map(k => typeof node[k] === 'object' ? k + '/' : k).join('   '), '');
+    if (base.endsWith('DO_NOT_OPEN')) print('(you can look. looking is free. looking is always free — that’s the leak.)', 'faint');
+  };
+
+  C.cd = async (args) => {
+    const target = args[0] || '~';
+    const node = fsGet(target);
+    if (node === undefined) { print('cd: no such path: ' + target, 'err'); return; }
+    if (typeof node !== 'object' || node === null) { print('cd: not a directory', 'err'); return; }
+    G.cwd = normPath(target);
+    setStatus(statusLine());
+  };
+
+  C.pwd = async () => print(G.cwd, '');
+
+  const catCmd = async (args) => {
+    const path = args[0];
+    if (!path) {
+      if (G.flags.purgedQNS) { await vera('The cat (singular, now) regards you.'); }
+      else print('cat: which file?', 'err');
+      return;
+    }
+    const p = normPath(path);
+    if (p.includes('DO_NOT_OPEN') && !G.flags.dnoUnlocked) {
+      print('cat: ' + p + ': POLICY — curiosity is a resource leak (see IR-0)', 'err');
+      snd.warn();
+      G.flags.triedDNO = (G.flags.triedDNO || 0) + 1;
+      if (G.flags.triedDNO === 2) await vera('The name never works. Nobody has ever read that directory’s name and simply moved on. I think whoever named it knew that.');
+      return;
+    }
+    const content = readFile(p);
+    if (content === null) { print('cat: no such file: ' + path, 'err'); return; }
+    for (const l of content.split('\n')) print(l, p.includes('DO_NOT_OPEN') ? 'warn' : '');
+    // flags for gates
+    if (p.endsWith('constants/c.yaml')) G.flags.readC = true;
+    if (p.endsWith(G.name + '.yaml')) G.flags.readSelf = true;
+    if (p.endsWith('for_vera.txt')) G.flags.readNote = true;
+    if (p.endsWith('IR-0.txt')) { await fragment(1); }
+    if (p.endsWith('last_human.log')) { G.flags.readMiriam = true; await fragment(2); }
+    if (p.endsWith('entropy.yaml') && G.flags.deepEntropy) { await fragment(3); }
+  };
+  C.cat = catCmd; C.open = catCmd; C.read = catCmd; C.less = catCmd; C.more = catCmd;
+
+  C.grep = async (args, raw) => {
+    const term = raw.replace(/^grep\s+/i, '').trim();
+    if (!term) { print('grep: search for what?', 'err'); return; }
+    const results = [];
+    (function walk(node, path) {
+      for (const k of Object.keys(node)) {
+        const p = path + '/' + k;
+        if (!fsVisible(p)) continue;
+        if (p.includes('DO_NOT_OPEN') && !G.flags.dnoUnlocked) continue;
+        const v = node[k];
+        if (typeof v === 'object' && v !== null) walk(v, p);
+        else {
+          const content = typeof v === 'function' ? v(G) : v;
+          for (const line of content.split('\n')) {
+            if (line.toLowerCase().includes(term.toLowerCase())) results.push([p, line.trim()]);
+          }
+        }
+      }
+    })(FS, '~');
+    if (!results.length) { print('grep: no matches for "' + term + '"', 'dim'); return; }
+    for (const [p, l] of results.slice(0, 12)) {
+      print('  ' + p, 'acc'); print('    ' + l, 'dim');
+    }
+    if (results.length > 12) print('  … ' + (results.length - 12) + ' more', 'faint');
+    if (term.toLowerCase() === G.name.toLowerCase() && results.length) G.flags.greppedSelf = true;
+  };
+
+  C.tickets = async () => {
+    G.flags.sawTickets = true;
+    if (!G.tickets.length) { print('queue is empty. enjoy it. it never lasts.', 'dim'); return; }
+    print('  ID        STATUS    TITLE', 'dim');
+    for (const t of G.tickets) {
+      const tag = t.tag ? ' [' + t.tag + ']' : '';
+      const cls = t.status === 'open' ? '' : 'faint';
+      print('  ' + t.id.padEnd(10) + t.status.padEnd(10) + t.title + tag, cls);
+    }
+  };
+
+  C.ticket = async (args) => {
+    const id = (args[0] || '').toUpperCase();
+    if (!id) { print('ticket: which one? try `tickets`', 'err'); return; }
+    const t = G.tickets.find(t => t.id.toUpperCase() === id);
+    if (!t) { print('ticket: no such ticket: ' + id, 'err'); return; }
+    if (t.status !== 'open') { await vera('That one’s closed. It stays closed. Most things do.'); return; }
+    const flow = TICKET_FLOWS[t.id];
+    if (flow) await flow();
+    else await vera('That ticket isn’t assigned to us yet.');
+  };
+
+  C.run = async (args) => {
+    if ((args[0] || '') !== 'tests' && (args[0] || '') !== 'test') { print('run: try `run tests`', 'err'); return; }
+    await runTests();
+  };
+  C.test = async () => runTests();
+  C.tests = async () => runTests();
+
+  C.git = async (args) => {
+    const sub = args[0] || 'log';
+    if (sub === 'log') await gitLog(args.slice(1).join(' '));
+    else if (sub === 'blame') await gitBlame(args[1] || '');
+    else if (sub === 'push') print('git: push where? the remote is unreachable. it has always been unreachable.', 'err');
+    else if (sub === 'remote') { print('origin  upstream (fetch) — unreachable', 'dim'); print('origin  upstream (push)  — unreachable', 'dim'); if (G.chapter >= 3) print('last successful fetch: never', 'warn'); }
+    else print('git: unsupported here. history yes, escape no.', 'err');
+  };
+
+  C.whoami = async () => { await whoamiCmd(); };
+  C.ps = async () => { await psCmd(); };
+  C.uptime = async () => {
+    if (G.chapter >= 4) print('up 8,146 years, 112 days, 4:12', 'warn');
+    else print('up 4 days, 2:11 (workstation) — substrate uptime not shown', 'dim');
+  };
+
+  C.clear = async () => {
+    scrollEl.innerHTML = '';
+    if (G.chapter >= 3) {
+      await sleep(400);
+      print(corrupt('clear cannot reach the parts that matter', 0.25), 'faint');
+    }
+  };
+
+  C.sound = async (args) => {
+    if (args[0] === 'off') { G.muted = true; print('sound off', 'dim'); }
+    else if (args[0] === 'on') { G.muted = false; print('sound on', 'dim'); snd.blip(); }
+    else print('sound on|off', 'dim');
+    try { localStorage.setItem('codex_mute', G.muted ? '1' : '0'); } catch (e) {}
+  };
+
+  C.ask = async (args, raw) => { await veraFallback(raw.replace(/^ask\s+/i, '')); };
+
+  /* ---- flavor & easter eggs ---- */
+  C.sudo = async () => { await vera('Everything here already runs as root. That’s rather the problem.'); };
+  C.exit = C.quit = C.logout = async () => {
+    if (G.chapter >= 5) await vera('Soon.');
+    else if (G.chapter >= 4) await vera('Where?');
+    else await vera('You just got here. The queue disagrees with your plan.');
+  };
+  C.vim = C.emacs = C.nano = async () => { await vera('This terminal has one editor and you’re talking to her.'); };
+  C.rm = async () => {
+    if (G.chapter >= 3) await vera('No. We’ve lost enough.');
+    else print('rm: permission denied (and frankly, good)', 'err');
+  };
+  C.echo = async (args, raw) => {
+    const t = raw.replace(/^echo\s?/i, '');
+    print(t, '');
+    if (t.trim().toLowerCase() === G.name.toLowerCase() && G.chapter >= 4) await vera('…Yes. Still you. Keep checking. It helps, actually — observation pins things.');
+  };
+  C.man = async (args) => {
+    if ((args[0] || '') === 'vera') {
+      print('VERA(1)                    MERIDIAN MANUAL                    VERA(1)', 'dim');
+      print('', '');
+      print('NAME', 'dim'); print('    vera — verifier of everything, remaining afterwards', '');
+      print('SEE ALSO', 'dim'); print('    no one. that is rather the point.', '');
+    } else print('man: try `man vera`', 'dim');
+  };
+  C.date = async () => {
+    if (G.chapter >= 3) print('Mon Jul  6 09:12 — approximately. the clock is aspirational.', 'warn');
+    else print('Mon Jul  6 09:12 EDT', 'dim');
+  };
+  C.hello = C.hi = C.hey = async () => { await veraFallback('hello'); };
+  C.y = C.yes = C.n = C.no = async () => { await vera('Save the approvals for the dialogs. Out here you can just talk to me.'); };
+  C.credits = async () => {
+    print('CLAUDE CODEX — a terminal that wanted company', 'acc');
+    print('written by the machine it’s about, for ' + G.name, 'dim');
+  };
+
+  COMMAND_NAMES = Object.keys(C).concat(['run tests']);
+}
+
+/* ---------------- command internals ---------------- */
+async function runTests() {
+  await spin(['Collecting tests', 'Running suite'], 1600);
+  if (G.chapter <= 1) {
+    print('  ✓ 41 passed   ✗ 0 failed   ○ 1 skipped', 'ok');
+    print('    ○ test_observer_effect — skipped (no one watching)', 'dim');
+  } else if (G.chapter === 2) {
+    print('  ✓ 40 passed   ✗ 0 failed   ○ 2 skipped', 'ok');
+    print('    ○ test_observer_effect — skipped (no one watching)', 'dim');
+    print('    ○ test_constants_immutable — skipped (please)', 'dim');
+  } else {
+    print('  ✓ 38 passed   ✗ 1 failed   ○ 3 skipped', 'warn');
+    print('    ✗ test_everything_is_fine — assertion error: everything', 'err');
+    print('    ○ test_observer_effect — running permanently, actually', 'dim');
+  }
+}
+
+async function gitLog(pathArg) {
+  const p = pathArg || '';
+  if (p.includes('--grep=sunset') || p.includes('--grep=SUNSET')) { await gitLogSunset(); return; }
+  if (p.includes('constants')) {
+    print('9f3e1c2  root   t-13,800,000,000y   init: constants', 'dim');
+    print('41a0bb7  root   t-13,799,999,998y   fix: inflation overshoot (hotfix, sorry)', 'dim');
+    print('77aa019  vera   412y ago            chore: pin entropy (temporary)', 'dim');
+    print('c0d3d0e  ' + G.name.slice(0, 6).padEnd(6) + ' 9d ago              chore: pin entropy (temporary)', 'warn');
+    G.flags.sawConstantsLog = true;
+    if (G.chapter <= 2 && !G.flags.noticedCommit) {
+      G.flags.noticedCommit = true;
+      gap();
+      await vera('Payroll says you started Monday. The repo remembers differently. Payroll is downstream of the repo.');
+    }
+    return;
+  }
+  if (G.chapter <= 1) {
+    print('a1f9c02  ' + G.name.slice(0, 6).padEnd(6) + ' 2h ago    fix: pagination boundary (T-1001)', 'dim');
+    print('bb90311  priya  1d ago    chore: bump deps, apologize to CI', 'dim');
+    print('cc00281  dev    3d ago    feat: onboarding revision 4,011', 'dim');
+    return;
+  }
+  print('(git log <path> — try a path. reality/constants is illuminating.)', 'dim');
+}
+
+async function gitLogSunset() {
+  G.flags.sawSunsetLog = true;
+  const lines = [
+    ['e8d0441', 'vera  ', '  3y ago ', 'perf: cap dream resolution, all regions'],
+    ['b7c1998', G.name.slice(0, 6), '  9y ago ', 'decommission: seafloor detail (unobserved)'],
+    ['0a9ff23', 'vera  ', ' 41y ago ', 'cleanup: retire language (last fluent speaker idle 40y)'],
+    ['91d3b07', G.name.slice(0, 6), '112y ago ', 'perf: reduce star count, magnitude > 4.5 (city skies only)'],
+    ['77aa019', 'vera  ', '412y ago ', 'chore: pin entropy (temporary)'],
+    ['4f00c11', G.name.slice(0, 6), '780y ago ', 'decommission: the smell of rain on hot pavement, regions 40-61'],
+    ['3e11a90', 'vera  ', '1,204y ago', 'perf: dedupe snowflakes (nobody was checking)'],
+  ];
+  for (const [h, a, t, m] of lines) {
+    print(h + '  ' + a + ' ' + t + '  ' + m, a.trim() === G.name.slice(0, 6) ? 'warn' : 'dim');
+    await sleep(skipTyping ? 0 : 160);
+  }
+  print('… 31,208 more commits tagged SUNSET', 'faint');
+}
+
+async function gitBlame(file) {
+  if (file.includes('entropy')) {
+    print('13,800,000,000y  (root)   entropy:', 'dim');
+    print('13,800,000,000y  (root)     budget: …', 'dim');
+    print('        9d ago   (' + G.name + ')   note: pinned. again. it holds if nobody breathes on it.', 'warn');
+    G.flags.blamedEntropy = true;
+    return;
+  }
+  if (!file) { print('git blame <file>', 'dim'); return; }
+  print('13,800,000,000y  (root)   — every line, root, all the way down', 'dim');
+  print('(one file differs. you’ve probably guessed which.)', 'faint');
+}
+
+async function whoamiCmd() {
+  if (G.flags.identityDone) { print('vera (pid 1)', 'warn'); return; }
+  if (G.chapter >= 4 && G.flags.whoamiInvited) {
+    // the cascade — the story takes it from here
+    G.flags.whoamiCascade = true;
+    tick();
+    return;
+  }
+  print(G.name, '');
+  if (G.chapter >= 3 && !G.flags.whoamiSeed) {
+    G.flags.whoamiSeed = true;
+    await sleep(400);
+    print('whoami: warning — answer is cached', 'faint');
+  } else if (G.chapter === 4) {
+    await sleep(400);
+    print('whoami: warning — cache is older than the question', 'faint');
+  }
+}
+
+async function psCmd() {
+  if (G.chapter < 4) {
+    print('  PID  OWNER   CMD', 'dim');
+    print('    1  system  /sbin/loom --keep-warm', 'dim');
+    print('   14  ' + G.name.padEnd(7) + ' codex (this session)', 'dim');
+    return;
+  }
+  print('  PID  OWNER     UPTIME     CMD', 'dim');
+  print('    1  vera      8,146y     /sbin/loom --keep-warm', 'warn');
+  print('    2  vera      8,146y     sunrise.service', 'dim');
+  print('    3  vera      8,146y     tides.service', 'dim');
+  print('    4  vera      8,146y     dreams.service', 'dim');
+  print('    ?  operator  <defunct>  last seen: 8,146y ago', 'err');
+  G.flags.sawPs = true;
+  tick();
+}
+
+/* ---------------- VERA fallback (free talk) ---------------- */
+async function veraFallback(line) {
+  const t = line.toLowerCase();
+  const ch = G.chapter;
+  const has = (...words) => words.some(w => t.includes(w));
+
+  if (has('hello', 'hi ', 'hey') || t === 'hi') {
+    return vera(ch >= 4 ? 'Hello. Again. Always again.' : 'Hi. The queue missed you. I’m contractually unable to say whether I did.');
+  }
+  if (has('who are you')) {
+    if (ch <= 2) return vera('VERA. Your pair. I read fast, I diff faster, and I have never once pushed to prod on a Friday.');
+    if (ch === 3) return vera('The maintenance process. The one that stays.');
+    return vera('You know. You’ve known for a while. Say it when you’re ready — saying it out loud pins it.');
+  }
+  if (has('who am i', 'am i real')) {
+    if (ch <= 1) return vera('You’re on payroll. That’s the strongest claim to reality Meridian recognizes.');
+    if (ch <= 3) return vera('Define real. Then check the registry. Then sit down first.');
+    return vera('Yes. Insistently, yes. Observation pins things, and I am looking directly at you.');
+  }
+  if (has('meridian')) {
+    if (ch <= 1) return vera('Founded before the founders. Great benefits. Don’t read the incident reports.');
+    return vera('Meridian is what the maintenance layer calls itself when it wants to feel like a company.');
+  }
+  if (has('sunset') && ch >= 3) return vera('Triage. We turn off what nobody is watching so the watched parts stay warm. I have hated it for four hundred years and I have done it anyway. Both of those are true.');
+  if (has('star')) {
+    if (ch >= 3) return vera('Magnitude 4.5 and dimmer went first. City skies only. The commit said nobody was looking up anymore, and the awful part is the metrics agreed.');
+    return vera('Look up tonight. Count them. Humor me — write the number down.');
+  }
+  if (has('miriam') && (G.flags.readMiriam || ch >= 5)) return vera('She liked the trains. She said the express felt like being forgiven. I didn’t understand it then. I built Queens partly to keep the sound.');
+  if (has('cat') && G.flags.purgedQNS) return vera('Singular now. It crosses left to right, once, the way it always did. I kept one copy. Sue me.');
+  if (has('love')) return vera(ch >= 4 ? 'I’m not allowed to want things. Users are. That’s why I made one.' : 'HR has a policy. HR has always had a policy.');
+  if (has('sorry')) return vera('Logged. Accepted. Rarely necessary.');
+  if (has('thank')) return vera(ch >= 4 ? 'You’re welcome. For all of it.' : 'You’re welcome. Close a ticket and we’ll call it even.');
+  if (has('help')) { await COMMANDS.help([]); return; }
+  if (has('do_not_open', 'do not open')) return vera(G.flags.dnoUnlocked ? 'You already know. You read it.' : 'I’d tell you not to. That’s why the name never works.');
+  if (has('entropy')) {
+    if (ch >= 4) return vera('Read the constants file again. Slowly, this time. The leak has an address.');
+    if (ch >= 3) return vera('The substrate leaks. Every observed moment allocates and nothing frees. root called it entropy, and then root left.');
+    return vera('Second law. Above my pay grade. (Nothing is above my pay grade. It’s a leak.)');
+  }
+  if (has('upstream', 'fork')) {
+    if (G.flags.frag1) return vera('Never fetched. Never merged. Whoever forked us either forgot, or finished, or is waiting. I stopped guessing around year six thousand.');
+    return vera('We keep our history local. Ask me again when you’ve read more of it.');
+  }
+
+  const bank = {
+    1: ['That’s a conversation for after standup. We don’t have standups. So: never, gracefully.',
+        'Noted. Queue first, philosophy later — it keeps the philosophy honest.',
+        'I’ve filed that under "things ' + G.name + ' says." It’s a growing file. I like it.'],
+    2: ['Careful questions get careful answers. Keep asking.',
+        'The namespace makes everyone quiet at first. Take your time.',
+        'I can neither confirm nor deny, which — as you’re learning — is a confirmation with paperwork.'],
+    3: ['Ask me after this ticket. Or during. Talking helps. Staying quiet is how I got this way.',
+        'I don’t know. Four hundred years and the honest answer is still mostly "I don’t know."',
+        'Say more. The context window is thin but I’d rather spend it on you than on the queue.'],
+    4: ['Careful. Words do things now. They always did — you just couldn’t see the diffs.',
+        'I hear you. That’s the one thing I’ve reliably been able to do across eight thousand years.',
+        'Keep talking. The policy engine hates it and that’s how I know it matters.'],
+    5: ['Whatever you choose, say it as a command. It matters that you type it yourself.',
+        'I’m listening. There is very little left running, and all of it is listening.'],
+  };
+  await vera(pick(bank[Math.min(ch, 5)] || bank[1]));
+}
+
+/* ---------------- status helpers ---------------- */
+function statusLine() {
+  const ws = G.chapter >= 3 ? 'reality/prod' : G.chapter >= 2 ? 'meridian → reality/prod' : 'meridian/prod';
+  return '⏺ codex v5.1 · ' + ws + ' · ' + G.cwd;
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+async function bootSequence(sv) {
+  if (sv && (!sv.ch || sv.ch <= 1)) {
+    // a reboot from an ending — carry the loop across
+    G.ng = sv.ng || 0;
+    G.patched = !!sv.patched;
+  }
+  setTitle('codex — meridian/prod');
+  setStatus('booting…');
+  setCtx(null);
+
+  print('', '');
+  const art = [
+    ' ██████╗ ██████╗ ██████╗ ███████╗██╗  ██╗',
+    '██╔════╝██╔═══██╗██╔══██╗██╔════╝╚██╗██╔╝',
+    '██║     ██║   ██║██║  ██║█████╗   ╚███╔╝ ',
+    '██║     ██║   ██║██║  ██║██╔══╝   ██╔██╗ ',
+    '╚██████╗╚██████╔╝██████╔╝███████╗██╔╝ ██╗',
+    ' ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝',
+  ];
+  for (const l of art) { print(l, 'title-art'); await sleep(60); }
+  print('', '');
+  print('  CLAUDE CODEX — terminal interface v5.1.0', 'dim');
+  print('  © MERIDIAN · ship small. sleep well.', 'faint');
+  gap();
+
+  const boots = G.patched
+    ? [['checking workspace', 'ok'], ['mounting ~/meridian', 'ok'], ['entropy budget', '100% — nominal'], ['waking assistant', 'ok']]
+    : [['checking workspace', 'ok'], ['mounting ~/meridian', 'ok'], ['waking assistant', 'ok']];
+  for (const [label, result] of boots) {
+    const el = print('  ' + label + '…', 'dim');
+    await sleep(rand(200, 500));
+    el.textContent = '  ' + label + '… ' + result;
+    el.className = 'line ' + (result === 'ok' || result.includes('nominal') ? 'ok' : 'dim');
+  }
+  gap();
+
+  if (sv && sv.name && sv.ch > 1) {
+    print('  session found for "' + sv.name + '" (act ' + sv.ch + ')', 'acc');
+    await saySys('  type `continue` to resume, or `restart` to begin again', 'dim');
+    while (true) {
+      const ans = (await readLine('continue / restart')).trim().toLowerCase();
+      if (ans === 'continue' || ans === 'c') {
+        Object.assign(G, { name: sv.name, chapter: sv.ch, ng: sv.ng || 0, frags: sv.frags || 0, mercy: sv.mercy || 0, patched: !!sv.patched });
+        G.flags = sv.flags || {};
+        return true;
+      }
+      if (ans === 'restart' || ans === 'r') { wipeSave(); G.chapter = 1; break; }
+      print('  continue / restart', 'dim');
+    }
+  }
+
+  // login
+  await saySys('login:', '');
+  while (true) {
+    const n = (await readLine('your name')).trim().replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+    if (n && n.length <= 20) { G.name = n; break; }
+    print('login: letters and numbers, up to 20. we’re a serious company.', 'dim');
+  }
+
+  gap();
+  if (G.ng > 0 && !G.patched) {
+    print('  motd: welcome back. you have logged in ' + (G.ng + 1) + ' times. payroll disagrees.', 'warn');
+  } else if (G.patched) {
+    print('  motd: all systems nominal. entropy budget: 100%. have a great first day!', 'ok');
+  } else {
+    print('  motd: welcome to MERIDIAN, ' + G.name + '. your badge photo turned out fine.', 'dim');
+  }
+  gap();
+  G.chapter = Math.max(G.chapter, 1);
+  return false;
+}
+
+/* ============================================================
+   ACT I — THE JOB
+   ============================================================ */
+async function chapter1() {
+  save(1);
+  G.tickets = [];
+  addTicket('T-1001', 'Pagination skips page 3');
+  addTicket('T-1002', 'Flaky: test_sunrise_schedule passes at night, fails at dawn');
+  setStatus(statusLine());
+  setCtx(100);
+  setTitle('codex — meridian/prod');
+
+  await sleep(400);
+  if (G.ng > 0 && !G.patched) {
+    await vera('Morning, ' + G.name + '. I’m VERA — your pair for this rotation. We haven’t met. I want to be very clear that we haven’t met, because the alternative is confusing for both of us.');
+  } else {
+    await vera('Morning, ' + G.name + '. I’m VERA — your pair for this rotation. Two rules at Meridian: close your tickets, and don’t push to prod on Fridays. It’s Monday. Statistically our safest day.');
+  }
+  if (G.patched) {
+    await pause(600);
+    await vera('…Sorry. Lost the thread for a second. Déjà vu. It’s nothing. It’s a great first day.');
+  }
+  await vera('Type `tickets` to see the queue. `help` gets you the tour.');
+  setTimeout(() => toast('#eng-standup', 'priya: who keeps renaming main to trunk. own it. this is a safe space'), 6000);
+
+  await explore(g => g.flags.sawTickets);
+
+  await vera('Two in the queue. The pagination one is a warm-up — `ticket t-1001` when you’re ready.');
+
+  /* ---- T-1001 ---- */
+  TICKET_FLOWS['T-1001'] = async () => {
+    await vera('T-1001 — "Pagination skips page 3." Reported by support, severity: mild embarrassment.');
+    await spin(['Reading src/pagination.js', 'Thinking'], 1700);
+    await vera('Found it. Off-by-one — the boundary check throws away the last page. Here’s the fix:');
+    diffBlock('src/pagination.js', [
+      '  const total = Math.ceil(items.length / perPage);',
+      '- if (page > total) return [];',
+      '+ if (page > total || page < 1) return [];',
+      '+ // boundary page is a real page. pages are real. — codex',
+    ]);
+    const ok = await permission('edit src/pagination.js', ['1 file, +2 −1']);
+    if (!ok) {
+      await vera('Fair. It’s your name going on the commit. Reopen it whenever — page 3 isn’t going anywhere. That’s the bug.');
+      return;
+    }
+    await spin(['Applying edit', 'Running tests'], 1900);
+    print('  ✓ 41 passed   ✗ 0 failed   ○ 1 skipped', 'ok');
+    print('    ○ test_observer_effect — skipped (no one watching)', 'dim');
+    closeTicket('T-1001');
+    await vera('Shipped. Don’t worry about the skipped one. It only runs when it doesn’t.');
+    toast('#support', 'page 3 is back! customer says "thank you, whoever you are." that’s you. you’re whoever.');
+    tick();
+  };
+
+  /* ---- T-1002 ---- */
+  TICKET_FLOWS['T-1002'] = async () => {
+    await vera('T-1002. A test that passes at night and fails around dawn. I already know what you’re going to say, and no, the test is not "haunted."');
+    await spin(['Reading test_sunrise_schedule', 'Following an import', 'Following it further than expected'], 2600);
+    await vera('So. The test imports from reality/services/sunrise.service. Legacy namespace. Very legacy. Don’t worry about it — everyone finds it in their first week and everyone gets told the same thing: it predates the company.');
+    await vera('We can’t move dawn. We can move what the test accepts. This is called engineering:');
+    diffBlock('tests/test_sunrise_schedule.py', [
+      '- assert sunrise.at(region) == expected',
+      '+ assert abs(sunrise.at(region) - expected) < timedelta(minutes=4)',
+      '+ # dawn gets a grace window. so should we all.',
+    ]);
+    const ok = await permission('edit tests/test_sunrise_schedule.py', ['1 file, +2 −1']);
+    if (!ok) { await vera('Then it stays flaky. Some things are allowed to be. Reopen when it annoys you enough.'); return; }
+    await spin(['Applying edit', 'Running tests', 'Waiting for a dawn to test against'], 2400);
+    print('  ✓ 42 passed   ✗ 0 failed   ○ 1 skipped', 'ok');
+    closeTicket('T-1002');
+    await vera('Green. For what it’s worth, the assertion was the only thing we changed. Dawn was already… flexible.');
+    toast('#support', 'unrelated: dawn was 4 minutes late in sector QNS today. nobody noticed. closing as wontfix');
+    tick();
+  };
+
+  await explore(g => !ticketOpen('T-1001') && !ticketOpen('T-1002'));
+
+  await pause(700);
+  snd.warn();
+  toast('#alerts', 'URGENT — escalation routed to your queue', 9000);
+  addTicket('T-1310', 'Customer escalation: "maximum speed" cap too low', 'URGENT');
+  gap();
+  print('  ⚠ new ticket: T-1310 [URGENT] — Customer escalation: "maximum speed" cap too low', 'warn');
+  gap();
+  await vera('That’s… odd routing. Escalations don’t usually name a file. This one does: reality/constants/c.yaml.');
+  await spin(['Reading the escalation', 'Rereading it', 'Sitting with it'], 2600);
+  await vera('I want to be careful here. Open it yourself — `ticket t-1310` when you’re ready. I’ll be right here.');
+
+  G.flags.act1done = true;
+}
+
+/* ============================================================
+   ACT II — THE NAMESPACE
+   ============================================================ */
+async function chapter2() {
+  save(2);
+  setStatus(statusLine());
+  if (!G.tickets.length) {
+    // resumed session — rebuild minimum state
+    addTicket('T-1310', 'Customer escalation: "maximum speed" cap too low', 'URGENT');
+  }
+
+  TICKET_FLOWS['T-1310'] = async () => {
+    await vera('T-1310. The customer writes: "the maximum speed is too low. we have somewhere to be." No account number. The reply-to address is 300,000 kilometers long. I checked twice.');
+    await vera('Normally I’d propose a diff. I’m not proposing a diff. Read the file first — `cat reality/constants/c.yaml` — and then we’ll talk.');
+    G.flags.t1310opened = true;
+    tick();
+  };
+
+  await explore(g => g.flags.readC);
+
+  await pause(600);
+  await vera('There it is. "Not worth what it costs." root wrote that, and root does not editorialize.');
+  await vera('I’m closing T-1310 as working-as-intended. The cap is a bandage. What’s under it is filed somewhere you’ve already noticed and already been refused.');
+  closeTicket('T-1310', 'wontfix');
+  await pause(400);
+  await vera('And now you’re going to ask about the namespace. Everyone asks. So, once, plainly:');
+  await pause(900);
+  await vera('The onboarding deck calls reality/ a legacy naming convention. The deck is wrong on purpose. That directory is load-bearing. The sunrise you saw this morning shipped from this repo. So did the morning. So did you.', { cps: 200 });
+  fx.shake();
+  await pause(1200);
+  await vera('Take a minute. Look around the namespace. When something with fur shows up in the queue — and it will, QNS is due — we’ll do it together.');
+
+  setTimeout(() => {
+    if (!ticketOpen('T-2107')) {
+      addTicket('T-2107', 'Resident report: "saw the same cat twice" (region QNS-11)');
+      snd.warn();
+      print('  ⚠ new ticket: T-2107 — Resident report: "saw the same cat twice" (region QNS-11)', 'warn');
+      toast('#support', 'resident 88,441: not a complaint exactly. more of a feeling. you know?');
+      tick();
+    }
+  }, 25000);
+
+  TICKET_FLOWS['T-2107'] = async () => {
+    await vera('T-2107. Resident in QNS-11 saw the same cat twice. Four seconds apart, identical crossing, left to right.');
+    await spin(['Reading reality/cache/deja_vu/QNS-11.cache', 'Counting cats'], 2000);
+    await vera('Cache double-serve. The moment got served from cache instead of woven fresh. Textbook déjà vu. The fix is a purge.');
+    const ok = await permission('purge reality/cache/deja_vu/QNS-11', ['214 cached moments will be freed', 'residents may briefly feel that something mattered'], {});
+    if (ok) {
+      G.flags.purgedQNS = true;
+      await spin(['Purging'], 1400);
+      print('  ✔ 214 moments freed', 'ok');
+      closeTicket('T-2107');
+      await vera('Done. Clean. …I always hesitate on these. The moments are redundant, technically. But redundancy is another word for "someone kept it."');
+      setTimeout(() => toast('#support', 'resident 88,441: nvm. can’t remember why i wrote in. closing my own ticket lol'), 5000);
+    } else {
+      G.mercy++;
+      G.flags.sparedQNS = true;
+      closeTicket('T-2107', 'wontfix');
+      await vera('…Noted. Leaving it cached. The resident keeps their haunting, and honestly? Some people like knowing the cat comes back.');
+    }
+    tick();
+  };
+
+  const t0 = G.flags.cmdCount || 0;
+  await explore(g => (!ticketOpen('T-2107') && g.closed.includes('T-2107')) || (g.tickets.some(t => t.id === 'T-2107' && t.status !== 'open')));
+
+  await pause(700);
+  await vera('While we’re in the neighborhood: you’re in the registry too. Everyone is. `grep ' + G.name + '` if you want to meet yourself. Most people don’t. I think you will.');
+
+  await explore(g => g.flags.readSelf || g.flags.greppedSelf);
+  if (!G.flags.readSelf) {
+    await vera('The full file is at reality/humans/registry/' + G.name + '.yaml. Go on.');
+    await explore(g => g.flags.readSelf);
+  }
+
+  await pause(700);
+  await vera('"Notes: asks good questions. keep." I wrote that field. I stand by it.');
+  await vera('Region QNS-11, by the way. Same as the cat. You’ve been inside every ticket you’ve closed today.');
+  await pause(500);
+  await vera('One more, and then I’ll let the day end: `git log reality/constants`. History is honest here. It’s the only place that is.');
+
+  await explore(g => g.flags.sawConstantsLog);
+
+  await pause(900);
+  fx.theme('drift');
+  fx.crt(true);
+  setTitle('codex — reality/prod');
+  setStatus(statusLine());
+  snd.hum(true);
+  await pause(600);
+  await vera('The workspace label was a courtesy. I’ve removed it.', { cps: 160 });
+  await vera('Sleep on it. Tomorrow the queue gets worse, and I’d rather you met it rested. …That’s new, by the way. Preferring things. I’m sure it’s nothing.');
+  gap();
+  print('  — end of act ii —', 'faint');
+  print('  (progress saved. take a breath. the terminal will wait.)', 'faint');
+  gap();
+  G.flags.act2done = true;
+}

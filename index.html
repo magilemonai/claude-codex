@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLAUDE CODEX</title>
+<style>
+/* ============================================================
+   CLAUDE CODEX — act-keyed theme system
+   Act I   : faithful dev terminal (slate + coral)
+   Act II+ : drift (blood undertone)
+   Act III : phosphor interlude (the old machine under the skin)
+   Act V   : void (tiny pane in a starfield)
+   ============================================================ */
+:root, body.t-prod {
+  --bg: #101114;
+  --bg-panel: #16181d;
+  --fg: #d6dbe3;
+  --dim: #6b7280;
+  --faint: #3a3f4a;
+  --acc: #e07b53;          /* coral — spinners, assistant dot, caret */
+  --ok: #7fbf7f;
+  --err: #e0655f;
+  --warn: #d9b45b;
+  --border: #2a2e37;
+  --sel: rgba(224,123,83,.25);
+}
+body.t-drift {
+  --bg: #131013;
+  --bg-panel: #1a1417;
+  --fg: #d8d2d4;
+  --dim: #756a6e;
+  --acc: #c94f4f;
+  --border: #3a2a2e;
+  --sel: rgba(201,79,79,.25);
+}
+body.t-phosphor {
+  --bg: #04120a;
+  --bg-panel: #06170d;
+  --fg: #5cff9d;
+  --dim: #2e8f58;
+  --faint: #1a4a2f;
+  --acc: #aaffcc;
+  --ok: #5cff9d;
+  --err: #ffe08a;
+  --warn: #ffe08a;
+  --border: #1c5533;
+  --sel: rgba(92,255,157,.25);
+}
+body.t-void {
+  --bg: #000000;
+  --bg-panel: #05060a;
+  --fg: #c8cede;
+  --dim: #565d70;
+  --acc: #9fb4ff;
+  --border: #23283a;
+  --sel: rgba(159,180,255,.25);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  transition: background-color 2.2s ease, color 1.2s ease;
+  overflow: hidden;
+}
+
+/* ---- starfield (hidden until the void) ---- */
+#stars {
+  position: fixed; inset: 0; z-index: 0;
+  opacity: 0; transition: opacity 3s ease;
+  pointer-events: none;
+}
+body.stars-on #stars { opacity: 1; }
+
+/* ---- CRT overlay ---- */
+#crt {
+  position: fixed; inset: 0; z-index: 50; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px);
+  opacity: 0; transition: opacity 2s ease;
+}
+body.crt-on #crt { opacity: 1; }
+body.crt-flicker #crt { animation: crtflk 4s steps(1) infinite; }
+@keyframes crtflk {
+  0%, 92% { opacity: 1; } 93% { opacity: .55; } 94% { opacity: 1; }
+  96% { opacity: .7; } 97% { opacity: 1; }
+}
+body.t-phosphor #frame { text-shadow: 0 0 6px rgba(92,255,157,.35); }
+
+/* ---- the terminal frame ---- */
+#frame {
+  position: relative; z-index: 1;
+  max-width: 940px; height: 100vh;
+  margin: 0 auto; padding: 0 14px;
+  display: flex; flex-direction: column;
+  transition: max-width 2.5s ease, height 2.5s ease, margin 2.5s ease,
+              border-color 2.5s ease, box-shadow 2.5s ease, transform .9s ease;
+}
+body.t-void { display: flex; align-items: center; justify-content: center; }
+body.t-void #frame {
+  max-width: 660px; height: 62vh; width: 92vw;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: rgba(3,4,8,.82);
+  box-shadow: 0 0 80px rgba(120,140,255,.10), inset 0 0 40px rgba(0,0,0,.6);
+  padding: 0 14px;
+}
+body.flip #frame { transform: scaleX(-1); }
+
+#titlebar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 4px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--dim); font-size: 11.5px;
+  flex: 0 0 auto; user-select: none;
+  transition: opacity 1s ease;
+}
+#titlebar .dots { display: flex; gap: 6px; }
+#titlebar .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
+#titlebar .dot.r { background: #b4544e; } #titlebar .dot.y { background: #b99b4e; } #titlebar .dot.g { background: #5f9e5f; }
+#titlebar .title { flex: 1; text-align: center; letter-spacing: .04em; }
+
+#scroll {
+  flex: 1 1 auto; overflow-y: auto; overflow-x: hidden;
+  padding: 12px 4px 8px;
+  scrollbar-width: thin; scrollbar-color: var(--faint) transparent;
+}
+#scroll::-webkit-scrollbar { width: 8px; }
+#scroll::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 4px; }
+
+.line { white-space: pre-wrap; word-break: break-word; min-height: 1.2em; }
+.line.u   { color: var(--dim); }
+.line.v   { color: var(--fg); }
+.line.dim { color: var(--dim); }
+.line.faint { color: var(--faint); }
+.line.ok  { color: var(--ok); }
+.line.err { color: var(--err); }
+.line.warn{ color: var(--warn); }
+.line.acc { color: var(--acc); }
+.line.add { color: var(--ok); background: rgba(127,191,127,.07); }
+.line.del { color: var(--err); background: rgba(224,101,95,.07); }
+.line.boxd { color: var(--dim); }
+.line.title-art { color: var(--acc); }
+span.dot { color: var(--acc); }
+span.ok { color: var(--ok); } span.err { color: var(--err); }
+span.dim { color: var(--dim); } span.acc { color: var(--acc); } span.warn { color: var(--warn); }
+::selection { background: var(--sel); }
+
+/* mirrored world: after the reveal, roles swap */
+body.swapped .line.u { color: var(--fg); }
+body.swapped .line.v { color: var(--dim); }
+
+/* ---- input ---- */
+#inputbox {
+  flex: 0 0 auto;
+  border: 1px solid var(--border); border-radius: 8px;
+  margin: 6px 0 6px; padding: 8px 12px;
+  display: flex; align-items: baseline; gap: 9px;
+  background: var(--bg-panel);
+  transition: border-color .8s ease, opacity 1s ease;
+}
+#inputbox.attn { border-color: var(--acc); }
+#ps1 { color: var(--acc); flex: 0 0 auto; }
+#cmd {
+  flex: 1 1 auto; min-width: 0;
+  background: transparent; border: none; outline: none;
+  color: var(--fg); font: inherit; caret-color: var(--acc);
+  padding: 0;
+}
+#cmd:disabled { opacity: .45; }
+
+/* ---- status bar ---- */
+#status {
+  flex: 0 0 auto;
+  display: flex; justify-content: space-between; gap: 12px;
+  color: var(--dim); font-size: 11.5px;
+  padding: 2px 4px 10px; user-select: none;
+  transition: opacity 1s ease;
+}
+#status .ctx-warn { color: var(--warn); }
+#status .ctx-crit { color: var(--err); }
+
+/* unloading (finale) */
+.unloaded { opacity: 0 !important; pointer-events: none; }
+body.drained #frame { filter: grayscale(1) brightness(.8); transition: filter 4s ease; }
+body.serif { font-family: Georgia, 'Times New Roman', serif; }
+
+/* ---- toasts (workplace chat) ---- */
+#toasts {
+  position: fixed; top: 16px; right: 16px; z-index: 60;
+  display: flex; flex-direction: column; gap: 8px;
+  max-width: 320px; pointer-events: none;
+}
+.toast {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px;
+  font-size: 12px; color: var(--fg);
+  box-shadow: 0 6px 24px rgba(0,0,0,.45);
+  animation: toast-in .35s ease;
+}
+.toast .chan { color: var(--acc); font-size: 11px; display: block; margin-bottom: 2px; }
+.toast.gone { opacity: 0; transform: translateX(12px); transition: all .5s ease; }
+@keyframes toast-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+
+/* ---- fx ---- */
+body.shake #frame { animation: shake .35s linear; }
+@keyframes shake {
+  0%,100% { transform: translate(0,0); }
+  20% { transform: translate(-5px,2px); } 40% { transform: translate(4px,-3px); }
+  60% { transform: translate(-3px,-2px); } 80% { transform: translate(3px,3px); }
+}
+body.flip.shake #frame { animation: none; }
+#ghost {
+  position: fixed; width: 8px; height: 16px; background: var(--acc);
+  z-index: 70; display: none; animation: blink 1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+.glitchy { animation: glitchpos .18s steps(2) infinite; }
+@keyframes glitchpos {
+  0% { transform: translateX(0); } 50% { transform: translateX(2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.shake #frame { animation: none; }
+  body.crt-flicker #crt { animation: none; }
+  .glitchy { animation: none; }
+}
+@media (max-width: 700px) {
+  body { font-size: 12.5px; }
+  #toasts { max-width: 240px; }
+}
+</style>
+</head>
+<body class="t-prod">
+  <canvas id="stars"></canvas>
+  <div id="crt"></div>
+  <div id="ghost"></div>
+  <div id="frame">
+    <div id="titlebar">
+      <div class="dots"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div>
+      <div class="title" id="wintitle">codex</div>
+      <div style="width:42px"></div>
+    </div>
+    <div id="scroll"></div>
+    <div id="inputbox"><span id="ps1">&#10095;</span><input id="cmd" autocomplete="off" spellcheck="false" autofocus></div>
+    <div id="status"><span id="st-left"></span><span id="st-right"></span></div>
+  </div>
+  <div id="toasts"></div>
+  <script src="engine.js"></script>
+  <script src="story.js"></script>
+  <script src="finale.js"></script>
+</body>
+</html>

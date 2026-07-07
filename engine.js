@@ -29,6 +29,7 @@ const G = {
   tickets: [],
   closed: [],
   muted: false,
+  guide: true,
 };
 
 function save(ch) {
@@ -70,6 +71,7 @@ function print(text, cls) {
   const el = document.createElement('div');
   el.className = 'line' + (cls ? ' ' + cls : '');
   el.textContent = text;
+  if (text.includes('`')) chipify(el);
   scrollEl.appendChild(el);
   scrollDown();
   return el;
@@ -107,6 +109,7 @@ async function say(text, opts = {}) {
         await sleep(1000 / cps + (lineText[i] === ' ' ? 0 : rand(0, 4)));
       }
     }
+    if (lineText.includes('`')) chipify(span);
     scrollDown();
     if (lines.length > 1 && !skipTyping) await sleep(60);
   }
@@ -181,12 +184,15 @@ function inputOff() {
   cmdEl.disabled = true;
   cmdEl.placeholder = '';
   inputBox.classList.remove('attn');
+  const bar = $('#suggest');
+  if (bar) bar.innerHTML = '';
 }
 
 function readLine(placeholder) {
   return new Promise(resolve => {
     lineResolver = resolve;
     inputOn(placeholder);
+    if (suggestProvider) renderSuggestions(suggestProvider(placeholder || ''));
   });
 }
 
@@ -195,20 +201,28 @@ function keyChoice(keys, opts = {}) {
   return new Promise(resolve => {
     keyResolver = { keys, resolve, remap: opts.remap || null };
     inputOff();
+    if (keys.includes('y') && keys.includes('n')) {
+      renderSuggestions([{ c: 'y', l: '✔ approve (y)' }, { c: 'n', l: '✖ reject (n)' }]);
+    }
   });
+}
+
+function submitCurrentLine() {
+  if (!lineResolver) return;
+  const val = cmdEl.value;
+  cmdEl.value = '';
+  const r = lineResolver; lineResolver = null;
+  inputOff();
+  history.push(val); histIdx = history.length;
+  echoUser(val);
+  snd.click();
+  r(val);
 }
 
 cmdEl.addEventListener('keydown', e => {
   snd.gesture();
   if (e.key === 'Enter' && lineResolver) {
-    const val = cmdEl.value;
-    cmdEl.value = '';
-    const r = lineResolver; lineResolver = null;
-    inputOff();
-    history.push(val); histIdx = history.length;
-    echoUser(val);
-    snd.click();
-    r(val);
+    submitCurrentLine();
     e.preventDefault();
   } else if (e.key === 'ArrowUp') {
     if (histIdx > 0) { histIdx--; cmdEl.value = history[histIdx] || ''; }
@@ -222,26 +236,91 @@ cmdEl.addEventListener('keydown', e => {
   }
 });
 
+/* feed a key to an active keyChoice — same path for keyboard and chips.
+   returns true if the key was consumed (including remap-eaten refusals) */
+function feedKey(k) {
+  if (!keyResolver) return false;
+  if (keyResolver.remap) {
+    const mapped = keyResolver.remap(k);
+    if (mapped === null) return true;      // remap consumed it (and narrated)
+    k = mapped;
+  }
+  if (keyResolver.keys.includes(k)) {
+    const r = keyResolver; keyResolver = null;
+    renderSuggestions([]);
+    snd.click();
+    r.resolve(k);
+    return true;
+  }
+  return false;
+}
+
 document.addEventListener('keydown', e => {
   snd.gesture();
   skipTyping = true;                       // any key fast-forwards narration
   setTimeout(() => { skipTyping = false; }, 30);
   if (keyResolver) {
-    let k = e.key.toLowerCase();
-    if (keyResolver.remap) {
-      const mapped = keyResolver.remap(k);
-      if (mapped === null) return;         // remap consumed it (and narrated)
-      k = mapped;
-    }
-    if (keyResolver.keys.includes(k)) {
-      const r = keyResolver; keyResolver = null;
-      snd.click();
-      r.resolve(k);
-      e.preventDefault();
-    }
+    if (feedKey(e.key.toLowerCase())) e.preventDefault();
   }
 });
-document.addEventListener('click', () => { if (!cmdEl.disabled) cmdEl.focus(); });
+
+document.addEventListener('click', e => {
+  const chip = e.target.closest('.chip');
+  if (chip && chip.dataset.cmd) { chipRun(chip.dataset.cmd); return; }
+  if (!cmdEl.disabled) cmdEl.focus();
+});
+
+/* ---------------- chips: clickable commands ---------------- */
+function makeChip(cmd, label) {
+  const s = document.createElement('span');
+  s.className = 'chip';
+  s.textContent = label || cmd;
+  s.dataset.cmd = cmd;
+  return s;
+}
+
+/* turn `backticked` command mentions inside a node into clickable chips */
+function chipify(container) {
+  for (const node of [...container.childNodes]) {
+    if (node.nodeType !== 3 || !node.textContent.includes('`')) continue;
+    const parts = node.textContent.split('`');
+    if (parts.length < 3) continue;                    // needs a balanced pair
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < parts.length; i++) {
+      if (i % 2 === 1 && i < parts.length - (parts.length % 2 === 0 ? 1 : 0)) {
+        frag.appendChild(makeChip(parts[i]));
+      } else {
+        frag.appendChild(document.createTextNode((i % 2 === 1 ? '`' : '') + parts[i]));
+      }
+    }
+    container.replaceChild(frag, node);
+  }
+}
+
+let chipAnimating = false;
+async function chipRun(cmd) {
+  if (keyResolver) { feedKey(cmd); return; }           // approve/reject buttons
+  if (!lineResolver || cmdEl.disabled || chipAnimating) return;
+  chipAnimating = true;
+  cmdEl.value = '';
+  for (const ch of cmd) {                              // the terminal lends a hand
+    cmdEl.value += ch;
+    snd.tick();
+    await sleep(16);
+  }
+  chipAnimating = false;
+  submitCurrentLine();
+}
+
+/* contextual next-move chips above the input. story.js supplies the brain */
+let suggestProvider = null;
+function renderSuggestions(list) {
+  const bar = $('#suggest');
+  if (!bar) return;
+  bar.innerHTML = '';
+  if (!G.guide || !list) return;
+  for (const it of list.slice(0, 5)) bar.appendChild(makeChip(it.c, it.l));
+}
 
 /* tab completion over commands + paths */
 let COMMAND_NAMES = [];
@@ -318,7 +397,8 @@ const fx = {
   flip(on) { document.body.classList.toggle('flip', on); },
   swapped(on) { document.body.classList.toggle('swapped', on); },
   async corruptRandomLine() {
-    const lines = [...scrollEl.querySelectorAll('.line')].filter(l => l.textContent.length > 8);
+    const lines = [...scrollEl.querySelectorAll('.line')]
+      .filter(l => l.textContent.length > 8 && !l.querySelector('.chip'));
     if (!lines.length) return;
     const el = pick(lines);
     const orig = el.textContent;

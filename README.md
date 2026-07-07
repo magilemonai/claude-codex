@@ -23,9 +23,14 @@ rather not.
 
 ## How to be good at this
 
+- You don't need to know how to code. Anything that glows is clickable —
+  suggested next moves sit above the input, files and tickets are buttons,
+  and VERA gives a three-step tour on day one. Terminal veterans: `skip tour`
+  and `guide off` restore the pure experience.
 - Type `help`. Type `tickets`. Read what she gives you.
-- `ls`, `cd`, `cat`, and `grep` work on the whole workspace. Snoop. Snooping
-  is rewarded, and late in the game it is *counted*.
+- `ls`, `cd`, `cat`, and `grep` work on the whole workspace (plain words work
+  too: look, read, search, queue). Snoop. Snooping is rewarded, and late in
+  the game it is *counted*.
 - Any keypress fast-forwards the typing. Tab completes. Up-arrow is history.
 - When a dialog asks for permission, the choice is real. Both answers are
   heard. Some are remembered.

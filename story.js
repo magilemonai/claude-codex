@@ -212,32 +212,45 @@ function registerCommands() {
 
   C.help = async () => {
     const rows = [
-      ['tickets', 'show the queue'],
-      ['ticket <id>', 'open a ticket'],
-      ['ls / cd / cat', 'look around the workspace'],
-      ['grep <term>', 'search everything'],
-      ['git log [path]', 'history'],
-      ['run tests', 'run the suite'],
-      ['ask <anything>', 'talk to me'],
-      ['sound on|off', 'toggle audio'],
+      ['tickets', 'your work queue'],
+      ['ticket <id>', 'open one (or click its button)'],
+      ['ls', 'look around — lists what’s here'],
+      ['cat <file>', 'read a file'],
+      ['grep <word>', 'search every file for a word'],
+      ['git log [path]', 'the history of changes'],
+      ['run tests', 'run the test suite'],
+      ['ask <anything>', 'talk to me — plain english works'],
+      ['stuck', 'I’ll point you at the next thread'],
+      ['guide off', 'hide the clickable hints, if you’re a purist'],
+      ['sound on|off', 'audio'],
     ];
     if (G.chapter >= 4) rows.push(['ps / whoami', 'if you must']);
     for (const [a, b] of rows) print('  ' + a.padEnd(18) + b, 'dim');
-    print('  stuck? just type: stuck', 'faint');
+    print('  plain words work too: look, read, search, queue, history.', 'faint');
+    print('  and nearly everything on screen is clickable.', 'faint');
     if (G.chapter >= 3) print('  (some commands exist that this list is not allowed to mention)', 'faint');
   };
 
-  C.ls = async (args) => {
-    const path = args.find(a => !a.startsWith('-')) || G.cwd;
+  const lsCmd = async (args) => {
+    G.flags.usedLs = true;
+    const path = (args || []).find(a => !a.startsWith('-')) || G.cwd;
     const node = fsGet(path);
     if (node === undefined) { print('ls: no such path: ' + path, 'err'); return; }
     if (typeof node !== 'object' || node === null) { print(normPath(path), ''); return; }
     const base = normPath(path);
     const names = Object.keys(node).filter(k => fsVisible((base === '~' ? '~' : base) + '/' + k));
     if (!names.length) { print('(empty)', 'faint'); return; }
-    print(names.map(k => typeof node[k] === 'object' ? k + '/' : k).join('   '), '');
+    const el = print('  ', '');
+    for (const k of names) {
+      const full = (base === '~' ? '~' : base) + '/' + k;
+      const isDir = typeof node[k] === 'object';
+      el.appendChild(makeChip(isDir ? 'ls ' + full : 'cat ' + full, k + (isDir ? '/' : '')));
+      el.appendChild(document.createTextNode('  '));
+    }
+    scrollDown();
     if (base.endsWith('DO_NOT_OPEN')) print('(you can look. looking is free. looking is always free — that’s the leak.)', 'faint');
   };
+  C.ls = lsCmd; C.look = lsCmd; C.dir = lsCmd;
 
   C.cd = async (args) => {
     const target = args[0] || '~';
@@ -291,10 +304,14 @@ function registerCommands() {
     if (p.endsWith('entropy.yaml') && G.flags.deepEntropy) { await fragment(3); }
   };
   C.cat = catCmd; C.open = catCmd; C.read = catCmd; C.less = catCmd; C.more = catCmd;
+  const _origCat = catCmd;   // usage flag for the tour
+  C.cat = C.open = C.read = C.less = C.more = async (args) => { G.flags.usedCat = true; await _origCat(args); };
 
-  C.grep = async (args, raw) => {
-    const term = raw.replace(/^grep\s+/i, '').trim();
-    if (!term) { print('grep: search for what?', 'err'); return; }
+  const grepCmd = async (args, raw) => {
+    G.flags.usedGrep = true;
+    const term = raw.replace(/^\S+\s*/, '').trim();
+    if (!term) { print('grep: search for what? try `grep sunrise`', 'err'); return; }
+    if (term.toLowerCase().includes('sunrise')) G.flags.greppedSunrise = true;
     const results = [];
     (function walk(node, path) {
       for (const k of Object.keys(node)) {
@@ -313,22 +330,27 @@ function registerCommands() {
     })(FS, '~');
     if (!results.length) { print('grep: no matches for "' + term + '"', 'dim'); return; }
     for (const [p, l] of results.slice(0, 12)) {
-      print('  ' + p, 'acc'); print('    ' + l, 'dim');
+      const el = print('  ', 'acc');
+      el.appendChild(makeChip('cat ' + p, p));
+      print('    ' + l, 'dim');
     }
     if (results.length > 12) print('  … ' + (results.length - 12) + ' more', 'faint');
     if (term.toLowerCase() === G.name.toLowerCase() && results.length) G.flags.greppedSelf = true;
   };
+  C.grep = grepCmd; C.search = grepCmd; C.find = grepCmd;
 
-  C.tickets = async () => {
+  const ticketsCmd = async () => {
     G.flags.sawTickets = true;
     if (!G.tickets.length) { print('queue is empty. enjoy it. it never lasts.', 'dim'); return; }
     print('  ID        STATUS    TITLE', 'dim');
     for (const t of G.tickets) {
       const tag = t.tag ? ' [' + t.tag + ']' : '';
       const cls = t.status === 'open' ? '' : 'faint';
-      print('  ' + t.id.padEnd(10) + t.status.padEnd(10) + t.title + tag, cls);
+      const el = print('  ' + t.id.padEnd(10) + t.status.padEnd(10) + t.title + tag + ' ', cls);
+      if (t.status === 'open') el.appendChild(makeChip('ticket ' + t.id.toLowerCase(), 'open'));
     }
   };
+  C.tickets = ticketsCmd; C.queue = ticketsCmd;
 
   C.ticket = async (args) => {
     const id = (args[0] || '').toUpperCase();
@@ -418,6 +440,19 @@ function registerCommands() {
   };
   C.fragments = async () => { await fragStatus(); };
   C.hint = C.stuck = async () => { await vera(currentHint()); };
+  C.history = async (args) => { await gitLog((args || []).join(' ')); };
+  C.guide = async (args) => {
+    if (args[0] === 'off') { G.guide = false; renderSuggestions([]); print('guide off — pure terminal. respect.', 'dim'); }
+    else if (args[0] === 'on') { G.guide = true; print('guide on', 'dim'); }
+    else print('guide on|off', 'dim');
+    try { localStorage.setItem('codex_guide', G.guide ? '1' : '0'); } catch (e) {}
+  };
+  C.skip = async (args) => {
+    if ((args[0] || '') === 'tour') {
+      G.flags.skipTour = true;
+      await vera('A veteran. Skipping the tour. The queue missed you already.');
+    } else print('skip what? `skip tour`', 'dim');
+  };
 
   COMMAND_NAMES = Object.keys(C).concat(['run tests']);
 }
@@ -570,6 +605,65 @@ function currentHint() {
       return 'T-0001 wants an answer: `stay`, `shutdown --graceful`, or the one you earned — `patch entropy`.';
   }
   return 'Close a ticket. It helps. It always helped.';
+}
+
+/* ---------------- suggestion chips (guide mode) ---------------- */
+function suggestCmds(placeholder) {
+  if (placeholder === 'your name') return [];
+  if (placeholder === 'I AM STILL HERE') return [];
+  if (placeholder === 'continue / restart') return [{ c: 'continue' }, { c: 'restart' }];
+  const f = G.flags, out = [];
+  const T = id => G.tickets.find(t => t.id === id && t.status === 'open');
+  if (f.tourWant === 'ls') return [{ c: 'ls', l: 'look around' }, { c: 'skip tour' }];
+  if (f.tourWant === 'cat') return [{ c: 'cat README.md', l: 'read README.md' }, { c: 'skip tour' }];
+  if (f.tourWant === 'grep') return [{ c: 'grep sunrise', l: 'search: sunrise' }, { c: 'skip tour' }];
+  switch (G.chapter) {
+    case 1:
+      if (!f.sawTickets) { out.push({ c: 'tickets', l: 'tickets — the queue' }); break; }
+      if (T('T-1001')) out.push({ c: 'ticket t-1001', l: 'open T-1001' });
+      if (T('T-1002')) out.push({ c: 'ticket t-1002', l: 'open T-1002' });
+      if (T('T-1310')) out.push({ c: 'ticket t-1310', l: '⚠ open T-1310' });
+      break;
+    case 2:
+      if (T('T-1310') && !f.t1310opened) out.push({ c: 'ticket t-1310', l: '⚠ open T-1310' });
+      else if (!f.readC) out.push({ c: 'cat reality/constants/c.yaml', l: 'read c.yaml' });
+      if (T('T-2107')) out.push({ c: 'ticket t-2107', l: 'open T-2107' });
+      if (!T('T-2107') && f.readC && !f.readSelf && G.tickets.some(t => t.id === 'T-2107'))
+        out.push({ c: 'cat reality/humans/registry/' + G.name + '.yaml', l: 'read your own file' });
+      if (f.readSelf && !f.sawConstantsLog) out.push({ c: 'git log reality/constants', l: 'history: constants' });
+      break;
+    case 3:
+      if (T('T-3002')) out.push({ c: 'ticket t-3002', l: 'open T-3002' });
+      if (T('T-3044')) out.push({ c: 'ticket t-3044', l: 'open T-3044' });
+      if (!out.length && !f.sawSunsetLog) out.push({ c: 'git log --grep=sunset', l: 'history: SUNSET' });
+      if (f.chaseOn && !f.traceDone) {
+        if (!f.trace1) out.push({ c: 'grep LEAK-TRACE', l: 'grep LEAK-TRACE' }, { c: 'cat reality/constants/planck.yaml', l: 'trace: the constants' });
+        else if (!f.trace2) out.push({ c: 'cat reality/services/dreams.service', l: 'trace: the nicest service' });
+        else if (!f.trace3) out.push({ c: 'cat reality/cache/deja_vu/QNS-11.cache', l: 'trace: the cache' });
+        else out.push({ c: 'cat reality/humans/registry/' + G.name + '.yaml', l: 'trace: the registry' });
+      }
+      if (f.compacted && !f.readNote) out.push({ c: 'cat var/notes/for_vera.txt', l: 'read her the note' });
+      if (f.readNote && f.dnoUnlocked && !f.frag1) out.push({ c: 'cat reality/DO_NOT_OPEN/IR-0.txt', l: 'the famous door' });
+      break;
+    case 4:
+      if (!f.sawPs) out.push({ c: 'ps', l: 'ps — what’s running' });
+      if (f.knowsLog && !f.readMiriam) out.push({ c: 'cat var/log/sessions/last_human.log', l: 'her last session' });
+      if (f.whoamiInvited && !f.identityDone) out.push({ c: 'whoami' });
+      if (f.identityDone && f.deepEntropy && !f.frag3) out.push({ c: 'cat reality/constants/entropy.yaml', l: 'read entropy again' });
+      break;
+    case 5:
+      if (G.frags < 3) {
+        out.push({ c: 'fragments' });
+        if (!f.frag1) out.push({ c: 'cat reality/DO_NOT_OPEN/IR-0.txt', l: 'the famous door' });
+        if (!f.frag3) out.push({ c: 'cat reality/constants/entropy.yaml', l: 'the constants' });
+      }
+      out.push({ c: 'stay' }, { c: 'shutdown --graceful' });
+      if (G.frags >= 3) out.push({ c: 'patch entropy' });
+      return out;
+  }
+  if (!out.length) out.push({ c: 'ls', l: 'look around' }, { c: 'tickets' });
+  out.push({ c: 'stuck', l: '?' });
+  return out;
 }
 
 async function fragStatus() {
@@ -813,12 +907,12 @@ async function chapter1() {
     await pause(600);
     await vera('…Sorry. Lost the thread for a second. Déjà vu. It’s nothing. It’s a great first day.');
   }
-  await vera('Type `tickets` to see the queue. `help` gets you the tour.');
+  await vera('Type `tickets` to see the queue — or just click it. Anything that glows is clickable. The terminal honors hands of all kinds.');
   setTimeout(() => toast('#eng-standup', 'priya: who keeps renaming main to trunk. own it. this is a safe space'), 6000);
 
   await explore(g => g.flags.sawTickets);
 
-  await vera('Two in the queue. The pagination one is a warm-up — `ticket t-1001` when you’re ready.');
+  await vera('Two in the queue. The pagination one is a warm-up — `ticket t-1001` when you’re ready. I do the reading, you make the call.');
 
   /* ---- T-1001 ---- */
   TICKET_FLOWS['T-1001'] = async () => {
@@ -865,6 +959,38 @@ async function chapter1() {
     toast('#support', 'unrelated: dawn was 4 minutes late in sector QNS today. nobody noticed. closing as wontfix');
     tick();
   };
+
+  await explore(g => !ticketOpen('T-1001') || !ticketOpen('T-1002'));
+
+  /* ---- the tour: teach the three verbs by hand ---- */
+  if (!G.flags.skipTour && !(G.flags.usedLs && G.flags.usedCat && G.flags.usedGrep)) {
+    await pause(600);
+    await vera('One closed. Before the next: the tour. It’s required, it’s three steps, and I’ve given it 4,011 times, so it is extremely polished. (`skip tour` if you’ve held a terminal before.)');
+    if (!G.flags.usedLs && !G.flags.skipTour) {
+      G.flags.tourWant = 'ls';
+      await vera('This workspace is drawers inside drawers. `ls` opens the one you’re standing in. Try it.');
+      await explore(g => g.flags.usedLs || g.flags.skipTour);
+      G.flags.tourWant = null;
+      if (!G.flags.skipTour) await vera('That’s everything on this floor. The ones ending in / are more drawers — click any of them to look inside.');
+    }
+    if (!G.flags.usedCat && !G.flags.skipTour) {
+      G.flags.tourWant = 'cat';
+      await vera('`cat` reads a file out loud. It’s short for concatenate, which is short for "the seventies happened." Read the README — `cat README.md`.');
+      await explore(g => g.flags.usedCat || g.flags.skipTour);
+      G.flags.tourWant = null;
+      if (!G.flags.skipTour) await vera('Revision 4,011, and the joke in it stopped being a joke around revision 200. Moving on.');
+    }
+    if (!G.flags.usedGrep && !G.flags.skipTour) {
+      G.flags.tourWant = 'grep';
+      await vera('Last one, and it’s the flashlight: `grep` finds a word anywhere in the workspace, no matter how deep it’s filed. Try `grep sunrise`.');
+      await explore(g => g.flags.usedGrep || g.flags.skipTour);
+      G.flags.tourWant = null;
+      if (G.flags.greppedSunrise) await vera('See the hit in reality/services? A test in our queue imports from there. Hold that thought — the tour just became relevant, which has never once happened before.');
+      else if (!G.flags.skipTour) await vera('The flashlight works on anything. Names. Words you’re not supposed to know yet. Your own, eventually.');
+    }
+    if (!G.flags.skipTour) await vera('Tour complete. You now outrank the onboarding deck. Back to the queue.');
+    G.flags.tourWant = null;
+  }
 
   await explore(g => !ticketOpen('T-1001') && !ticketOpen('T-1002'));
 

@@ -152,6 +152,28 @@ span.dim { color: var(--dim); } span.acc { color: var(--acc); } span.warn { colo
 body.swapped .line.u { color: var(--fg); }
 body.swapped .line.v { color: var(--dim); }
 
+/* ---- chips (clickable commands) ---- */
+.chip {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 7px;
+  margin: 0 2px;
+  cursor: pointer;
+  color: var(--acc);
+  background: var(--bg-panel);
+  transition: border-color .15s ease, background .15s ease;
+  user-select: none;
+}
+.chip:hover { border-color: var(--acc); }
+.chip:active { transform: translateY(1px); }
+#suggest {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 4px 2px 2px;
+  flex: 0 0 auto;
+}
+#suggest .chip { padding: 2px 9px; }
+
 /* ---- input ---- */
 #inputbox {
   flex: 0 0 auto;
@@ -244,6 +266,7 @@ body.flip.shake #frame { animation: none; }
       <div style="width:42px"></div>
     </div>
     <div id="scroll"></div>
+    <div id="suggest"></div>
     <div id="inputbox"><span id="ps1">&#10095;</span><input id="cmd" autocomplete="off" spellcheck="false" autofocus></div>
     <div id="status"><span id="st-left"></span><span id="st-right"></span></div>
   </div>

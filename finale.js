@@ -546,8 +546,10 @@ function applyAmbient(ch) {
    ============================================================ */
 async function main() {
   try { G.muted = localStorage.getItem('codex_mute') === '1'; } catch (e) {}
+  try { G.guide = localStorage.getItem('codex_guide') !== '0'; } catch (e) {}
   registerCommands();
   fallbackHandler = veraFallback;
+  suggestProvider = suggestCmds;
 
   // hidden debug: codex --jump <act>
   COMMANDS.codex = async (args) => {

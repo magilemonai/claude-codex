@@ -30,6 +30,7 @@ const G = {
   closed: [],
   muted: false,
   guide: true,
+  textSpeed: 1,       // dwell multiplier: slow 1.6 / normal 1 / fast 0.45
 };
 
 function save(ch) {
@@ -64,6 +65,15 @@ function recordEnding(name) {
 
 /* ---------------- output ---------------- */
 let skipTyping = false;
+let skipRequested = 0;   // bumped by any user input; interruptible pauses watch it
+
+/* reading time for auto-advancing text: ~17 chars/sec (BBC/Netflix band)
+   plus a fixation base, floored at Netflix's 5/6s minimum, capped at their
+   7s max. text persists in scrollback, so this only paces the *stream*. */
+function readMs(text) {
+  const chars = String(text).replace(/\s+/g, ' ').trim().length;
+  return Math.min(6500, Math.max(900, 600 + chars * 55)) * (G.textSpeed || 1);
+}
 
 function scrollDown() { scrollEl.scrollTop = scrollEl.scrollHeight; }
 
@@ -90,7 +100,8 @@ function gap() { print('', ''); }
 async function say(text, opts = {}) {
   const cps = opts.cps || 260;                 // chars per second
   const lines = String(text).split('\n');
-  for (const lineText of lines) {
+  for (let li = 0; li < lines.length; li++) {
+    const lineText = lines[li];
     const el = print('', opts.cls);
     if (opts.prefixHTML) {
       const p = document.createElement('span');
@@ -111,20 +122,28 @@ async function say(text, opts = {}) {
     }
     if (lineText.includes('`')) chipify(span);
     scrollDown();
-    if (lines.length > 1 && !skipTyping) await sleep(60);
+    if (li < lines.length - 1 && lineText.trim()) await pause(readMs(lineText));
   }
 }
 
 async function vera(text, opts = {}) {
   snd.blip();
   await say(text, { ...opts, cls: 'v' + (opts.cls ? ' ' + opts.cls : ''), prefixHTML: '<span class="dot">&#9679;</span> ' });
-  await pause(opts.wait === undefined ? 350 : opts.wait);
+  await pause(opts.wait === undefined ? readMs(text) : opts.wait);
 }
 function sys(text, cls) { return print(text, cls || 'dim'); }
 async function saySys(text, cls) { await say(text, { cls: cls || 'dim' }); }
 function echoUser(text) { print('❯ ' + text, 'u'); }
 
-async function pause(ms) { if (!skipTyping) await sleep(ms); }
+/* interruptible pause — any user input (advance-on-input) cuts it short */
+async function pause(ms) {
+  const mark = skipRequested;
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (skipRequested !== mark) return;
+    await sleep(50);
+  }
+}
 
 /* boxed dialog, Claude-Code-permission style */
 function box(title, lines, cls) {
@@ -258,6 +277,7 @@ function feedKey(k) {
 document.addEventListener('keydown', e => {
   snd.gesture();
   skipTyping = true;                       // any key fast-forwards narration
+  skipRequested++;                         // …and cuts reading pauses short
   setTimeout(() => { skipTyping = false; }, 30);
   if (keyResolver) {
     if (feedKey(e.key.toLowerCase())) e.preventDefault();
@@ -361,8 +381,16 @@ async function drainCtx(to, stepMs = 400) {
   }
 }
 
-/* ---------------- toasts ---------------- */
-function toast(chan, text, ms = 7000) {
+/* ---------------- toasts ----------------
+   duration: ~500ms/word + settle buffer (toasts compete with the main
+   text for attention, so they get the generous end of the standards).
+   hover pauses the clock; `chat` replays the log — nothing lives only
+   in transient UI. */
+const toastLog = [];
+function toast(chan, text, ms = 0) {
+  toastLog.push({ chan, text });
+  const words = text.split(/\s+/).length;
+  const dur = Math.max(ms, Math.min(14000, 3000 + words * 500)) * (G.textSpeed || 1);
   const t = document.createElement('div');
   t.className = 'toast';
   const c = document.createElement('span'); c.className = 'chan'; c.textContent = chan;
@@ -370,7 +398,12 @@ function toast(chan, text, ms = 7000) {
   t.appendChild(c); t.appendChild(b);
   $('#toasts').appendChild(t);
   snd.pop();
-  setTimeout(() => { t.classList.add('gone'); setTimeout(() => t.remove(), 600); }, ms);
+  let remaining = dur, timer = null, shownAt = 0;
+  const dismiss = () => { t.classList.add('gone'); setTimeout(() => t.remove(), 600); };
+  const arm = () => { shownAt = Date.now(); timer = setTimeout(dismiss, remaining); };
+  t.addEventListener('mouseenter', () => { clearTimeout(timer); remaining -= Date.now() - shownAt; });
+  t.addEventListener('mouseleave', () => { remaining = Math.max(1500, remaining); arm(); });
+  arm();
 }
 
 /* ---------------- fx ---------------- */

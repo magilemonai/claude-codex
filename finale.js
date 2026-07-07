@@ -133,7 +133,7 @@ async function chapter3() {
   snd.warn(); snd.warn();
   print('  ⚠ CONTEXT LOW — COMPACTING CONVERSATION…', 'err');
   fx.shake();
-  await sleep(1400);
+  await sleep(2400);   // guaranteed display — the wipe must not catch anyone mid-line
   scrollEl.innerHTML = '';
   await sleep(900);
   setCtx(88);
@@ -229,15 +229,15 @@ async function chapter4() {
   /* the cascade */
   await sleep(500);
   print(G.name, '');
-  await sleep(800);
+  await pause(1200);
   print('whoami: warning — answer is cached', 'faint');
-  await sleep(700);
+  await pause(2000);
   print(G.name + ' (cached)', 'dim');
-  await sleep(700);
+  await pause(1200);
   print(G.name + ' (generated)', 'warn');
-  await sleep(800);
+  await pause(1400);
   print(G.name + ' (generative)', 'warn');
-  await sleep(1100);
+  await pause(1600);
   snd.thud();
   print('vera (pid 1)', 'err');
   await sleep(1400);
@@ -428,7 +428,7 @@ async function endingShutdown() {
     print('    (' + note + ')', 'faint');
     starsExtinguish(stars);
     snd.starOut();
-    await sleep(900);
+    await pause(readMs(note));
   }
 
   await pause(1000);
@@ -557,6 +557,7 @@ function applyAmbient(ch) {
 async function main() {
   try { G.muted = localStorage.getItem('codex_mute') === '1'; } catch (e) {}
   try { G.guide = localStorage.getItem('codex_guide') !== '0'; } catch (e) {}
+  try { G.textSpeed = parseFloat(localStorage.getItem('codex_speed')) || 1; } catch (e) {}
   registerCommands();
   fallbackHandler = veraFallback;
   suggestProvider = suggestCmds;

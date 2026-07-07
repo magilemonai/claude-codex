@@ -224,6 +224,8 @@ function registerCommands() {
       ['run tests', 'run the test suite'],
       ['ask <anything>', 'talk to me — plain english works'],
       ['stuck', 'I’ll point you at the next thread'],
+      ['chat', 'replay the side-channel messages'],
+      ['speed slow|fast', 'text pacing (any key skips ahead)'],
       ['guide off', 'hide the clickable hints, if you’re a purist'],
       ['sound on|off', 'audio'],
     ];
@@ -443,6 +445,25 @@ function registerCommands() {
   };
   C.fragments = async () => { await fragStatus(); };
   C.hint = C.stuck = async () => { await vera(currentHint()); };
+  C.chat = async () => {
+    if (!toastLog.length) { print('  the channels are quiet. suspiciously.', 'dim'); return; }
+    print('  — recent side-channel messages —', 'dim');
+    for (const m of toastLog.slice(-12)) {
+      print('  ' + m.chan.padEnd(14) + m.text, 'dim');
+    }
+  };
+  C.speed = async (args) => {
+    const map = { slow: 1.6, normal: 1, fast: 0.45 };
+    const cur = G.textSpeed >= 1.5 ? 'slow' : G.textSpeed <= 0.6 ? 'fast' : 'normal';
+    if (map[args[0]] !== undefined) {
+      G.textSpeed = map[args[0]];
+      try { localStorage.setItem('codex_speed', String(G.textSpeed)); } catch (e) {}
+      print('  text pacing: ' + args[0] + (args[0] === 'fast' ? ' — any key still skips ahead' : ''), 'dim');
+    } else {
+      print('  speed slow|normal|fast — currently: ' + cur, 'dim');
+      print('  (any keypress always skips ahead, at any speed)', 'faint');
+    }
+  };
   C.history = async (args) => { await gitLog((args || []).join(' ')); };
   C.guide = async (args) => {
     if (args[0] === 'off') { G.guide = false; renderSuggestions([]); print('guide off — pure terminal. respect.', 'dim'); }

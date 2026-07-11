@@ -5,4 +5,4 @@
 - [ ] mobile/touch QA: chips, tab-complete, and keypress fast-forward
 - [ ] audit that all synthesized sound cues honor `sound off` across five acts
 - [ ] confirm progress-save survives a mid-act tab close on each act
-- [ ] [crew] document the new `speed slow|normal|fast` control in README
+- [x] [crew] document the new `speed slow|normal|fast` control in README

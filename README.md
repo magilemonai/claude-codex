@@ -38,6 +38,9 @@ rather not.
 - Talk to VERA whenever you want — just type. She answers more honestly as
   things go on.
 - Stuck? Type `stuck`. She'll point you at the next thread without spoiling it.
+- Text arrives at a comfortable reading pace by default. `speed fast` or
+  `speed slow` adjusts it (persists between sessions), and any keypress
+  always skips ahead. Missed a side notification? `chat` replays them.
 - The boot screen keeps count of the endings you've found. The game remembers
   more than the save file does.
 

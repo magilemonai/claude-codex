@@ -13,9 +13,12 @@ Five acts. Multiple endings. One of them has to be found.
 ## Play
 
 Open `index.html` in a browser. That's it — no build, no server, no network.
+The easiest way on Windows is to **double-click `Play Claude Codex.bat`** (it
+opens the page next to it in your default browser). Double-clicking
+`index.html` itself works too, or from a terminal:
 
 ```
-open index.html
+start index.html
 ```
 
 Sound is on by default (all synthesized, very quiet). `sound off` if you'd

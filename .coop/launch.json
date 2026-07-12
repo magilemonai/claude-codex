@@ -1,0 +1,7 @@
+{
+  "command": ["cmd", "/c", "start", "", "index.html"],
+  "cwd": ".",
+  "url": null,
+  "wait_ms": 3000,
+  "note": "Opens Claude Codex as a local web page in your default browser — the whole game is that one page."
+}

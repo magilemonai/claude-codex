@@ -1,5 +1,5 @@
 {
-  "command": ["cmd", "/c", "start", "", "index.html"],
+  "command": ["open", "index.html"],
   "cwd": ".",
   "url": null,
   "wait_ms": 3000,

@@ -1,11 +1,11 @@
 {
   "verdict": "clear",
   "headline": "A play-in-your-browser story game that's dressed up to look like a coding terminal.",
-  "what_it_does": "You open a web page and it acts like an old-style computer terminal with a chat partner named VERA. You type (or click) commands to poke around a made-up workplace and uncover a five-chapter story, with quiet sound effects and visual flourishes. Everything happens inside that one web page. It's a game, not a real tool, and it changes nothing on your actual computer.",
+  "what_it_does": "You open a web page and it acts like an old-style computer terminal with a chat partner named VERA. You type (or click) commands to poke around a made-up workplace and uncover a five-chapter story, with quiet sound effects and visual flourishes. Everything happens inside that one web page. It's a game, not a real tool, and it changes nothing on your actual Mac.",
   "runs_things": ["a local web page in your browser — nothing else starts or runs"],
   "reaches_network": [],
   "touches_outside": [],
   "risks": [
-    {"level": "note", "plain": "It quietly saves your game progress and a couple of settings (sound on/off, text speed) inside the browser's own private storage — not real files on your PC — so it changes nothing outside the browser and clears if you clear browsing data."}
+    {"level": "note", "plain": "It quietly saves your game progress and a couple of settings (sound on/off, text speed) inside the browser's own private storage — not real files on your Mac — so it changes nothing outside the browser and clears if you clear browsing data."}
   ]
 }

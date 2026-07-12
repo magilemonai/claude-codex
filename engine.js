@@ -75,7 +75,19 @@ function readMs(text) {
   return Math.min(6500, Math.max(900, 600 + chars * 55)) * (G.textSpeed || 1);
 }
 
-function scrollDown() { scrollEl.scrollTop = scrollEl.scrollHeight; }
+function scrollDown() {
+  scrollEl.scrollTop = scrollEl.scrollHeight;
+  // re-pin after the browser lays out late content — inline-block option chips,
+  // wrapped lines, and suggest-bar resizes all change height *after* this frame.
+  requestAnimationFrame(() => { scrollEl.scrollTop = scrollEl.scrollHeight; });
+}
+
+/* safety net: several paths print a line (which scrolls) and THEN append a
+   clickable option chip to it, so the chip lands below the last scroll. Watch
+   the scrollback for any added/changed content and keep the newest line in
+   view, so freshly-spawned options are never stranded below the fold. */
+new MutationObserver(() => scrollDown())
+  .observe(scrollEl, { childList: true, subtree: true, characterData: true });
 
 function print(text, cls) {
   const el = document.createElement('div');
@@ -340,6 +352,9 @@ function renderSuggestions(list) {
   bar.innerHTML = '';
   if (!G.guide || !list) return;
   for (const it of list.slice(0, 5)) bar.appendChild(makeChip(it.c, it.l));
+  // the suggest bar growing steals height from #scroll — re-pin so the last
+  // line of narration doesn't slip behind the input.
+  scrollDown();
 }
 
 /* tab completion over commands + paths */

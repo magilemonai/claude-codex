@@ -13,13 +13,18 @@ Five acts. Multiple endings. One of them has to be found.
 ## Play
 
 Open `index.html` in a browser. That's it — no build, no server, no network.
-The easiest way on Windows is to **double-click `Play Claude Codex.bat`** (it
-opens the page next to it in your default browser). Double-clicking
-`index.html` itself works too, or from a terminal:
+The easiest way is to **double-click `index.html`** — it opens in your default
+browser. Or, from a terminal:
 
 ```
-start index.html
+open index.html
 ```
+
+There's also a **`Play Claude Codex.command`** launcher you can double-click
+(it opens the page next to it, so it works wherever the folder lives). If your
+Mac opens it as text the first time, right-click it → **Open** once, or run
+`chmod +x "Play Claude Codex.command"` to make it double-clickable. (On Windows,
+`Play Claude Codex.bat` does the same thing.)
 
 Sound is on by default (all synthesized, very quiet). `sound off` if you'd
 rather not.

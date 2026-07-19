@@ -392,6 +392,9 @@ function registerCommands() {
     const id = (args[0] || '').toUpperCase();
     if (!id) { print('ticket: which one? try `tickets`', 'err'); return; }
     const t = G.tickets.find(t => t.id.toUpperCase() === id);
+    // a resumed act does not re-queue anything the player already answered,
+    // so an id typed from memory can be genuinely absent and still be theirs.
+    if (!t && ticketDecided(id)) { await vera('That one’s closed. It stays closed. Most things do.'); return; }
     if (!t) { print('ticket: no such ticket: ' + id, 'err'); return; }
     if (t.status !== 'open') { await vera('That one’s closed. It stays closed. Most things do.'); return; }
     const flow = TICKET_FLOWS[t.id];
@@ -686,7 +689,7 @@ function suggestCmds(placeholder) {
       if (T('T-1310') && !f.t1310opened) out.push({ c: 'ticket t-1310', l: '⚠ open T-1310' });
       else if (!f.readC) out.push({ c: 'cat reality/constants/c.yaml', l: 'read c.yaml' });
       if (T('T-2107')) out.push({ c: 'ticket t-2107', l: 'open T-2107' });
-      if (!T('T-2107') && f.readC && !f.readSelf && G.tickets.some(t => t.id === 'T-2107'))
+      if (!T('T-2107') && f.readC && !f.readSelf && ticketDecided('T-2107', f))
         out.push({ c: 'cat reality/humans/registry/' + G.name + '.yaml', l: 'read your own file' });
       if (f.readSelf && !f.sawConstantsLog) out.push({ c: 'git log reality/constants', l: 'history: constants' });
       break;
@@ -1181,8 +1184,10 @@ async function chapter1() {
 async function chapter2() {
   save(2);
   setStatus(statusLine());
-  if (!G.tickets.length) {
-    // resumed session — rebuild minimum state
+  // resumed session — rebuild minimum state, but only the part of it the
+  // player has not already worked through. the escalation is answered by
+  // reading the file it names, and that reading is on disk.
+  if (!G.tickets.length && !ticketDecided('T-1310')) {
     addTicket('T-1310', 'Customer escalation: "maximum speed" cap too low', 'URGENT');
   }
 
@@ -1210,7 +1215,7 @@ async function chapter2() {
   await vera('Take a minute. Look around the namespace. When something with fur shows up in the queue — and it will, QNS is due — we’ll do it together.');
 
   setTimeout(() => {
-    if (!ticketOpen('T-2107')) {
+    if (!ticketOpen('T-2107') && !ticketDecided('T-2107')) {
       addTicket('T-2107', 'Resident report: "saw the same cat twice" (region QNS-11)');
       snd.warn();
       print('  ⚠ new ticket: T-2107 — Resident report: "saw the same cat twice" (region QNS-11)', 'warn');
@@ -1233,8 +1238,8 @@ async function chapter2() {
       await vera('Done. Clean. …I always hesitate on these. The moments are redundant, technically. But redundancy is another word for "someone kept it."');
       setTimeout(() => toast('#support', 'resident 88,441: nvm. can’t remember why i wrote in. closing my own ticket lol'), 5000);
     } else {
-      G.mercy++;
       G.flags.sparedQNS = true;
+      G.mercy = mercyFromFlags();
       closeTicket('T-2107', 'wontfix');
       await vera('…Noted. Leaving it cached. The resident keeps their haunting, and honestly? Some people like knowing the cat comes back.');
     }
@@ -1242,7 +1247,7 @@ async function chapter2() {
   };
 
   const t0 = G.flags.cmdCount || 0;
-  await explore(g => (!ticketOpen('T-2107') && g.closed.includes('T-2107')) || (g.tickets.some(t => t.id === 'T-2107' && t.status !== 'open')));
+  await explore(g => ticketDecided('T-2107', g.flags));
 
   await pause(700);
   await vera('While we’re in the neighborhood: you’re in the registry too. Everyone is. `grep ' + G.name + '` if you want to meet yourself. Most people don’t. I think you will.');

@@ -153,6 +153,209 @@ section('endings: boot counter derives from ENDINGS', () => {
   assert(!/\b3\b/.test(block), 'no hardcoded 3 remains in the endings-found block');
 });
 
+/* ------------- shared readers for the walk below -------------
+   line-based, not brace-counting: every top-level function in this
+   codebase opens at column 0 and closes with a bare `}` at column 0.
+   counting braces would trip over the `{ c: 'stay' }` chip literals
+   and the braces living inside story strings. */
+function topLevelFn(file, name) {
+  const lines = read(file).split('\n');
+  const start = lines.findIndex(l => new RegExp(`^(?:async\\s+)?function\\s+${name}\\s*\\(`).test(l));
+  if (start === -1) return null;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (lines[i] === '}') return lines.slice(start, i + 1).join('\n');
+  }
+  return null;
+}
+
+/* ============================================================
+   3. endings walk — every ending has a path a player can take
+   the claim: from act v, each name passed to recordEnding() is
+   reachable by typing (or clicking) a command that exists.
+   seams: the recordEnding() call sites in finale.js, the
+   COMMANDS.* assignments in chapter5(), suggestCmds' `case 5`,
+   the three fragment() award sites in story.js's catCmd, and the
+   FS_VIS predicates guarding the files those fragments live in.
+   ============================================================ */
+section('endings walk: every ending is reachable from act v', () => {
+  const finale = read('finale.js');
+  const story = read('story.js');
+
+  /* ---- A. each recordEnding() sits inside a named ending function ---- */
+  // walked line by line so we learn *which* function records each ending —
+  // that name is what we then chase to a command below.
+  const endingFn = new Map();   // ending name -> enclosing function
+  {
+    let cur = null;
+    for (const line of finale.split('\n')) {
+      const head = line.match(/^(?:async\s+)?function\s+(\w+)\s*\(/);
+      if (head) cur = head[1];
+      else if (line === '}') cur = null;
+      const call = line.match(/\brecordEnding\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+      if (call) endingFn.set(call[1], cur);
+    }
+  }
+  const orphan = [...endingFn].filter(([, fn]) => fn === null).map(([e]) => e);
+  assert(orphan.length === 0, `every recordEnding() sits inside a named function (loose: ${orphan.join(', ')})`);
+  assert(endingFn.size > 0, 'finale.js records at least one ending');
+
+  /* ---- B. each ending function is wired to an act-v command ---- */
+  const ch5 = topLevelFn('finale.js', 'chapter5');
+  if (!assert(ch5 !== null, 'finale.js still declares a top-level chapter5()')) return;
+
+  // the handlers are assigned back to back and closed off by the
+  // COMMAND_NAMES refresh; slice there so the last handler's segment
+  // doesn't swallow the rest of the act.
+  const wiringEnd = ch5.indexOf('COMMAND_NAMES');
+  assert(wiringEnd !== -1, 'chapter5() refreshes COMMAND_NAMES after wiring (tab-complete and chips read it)');
+  const wiring = ch5.slice(0, wiringEnd === -1 ? ch5.length : wiringEnd);
+
+  const assigns = [...wiring.matchAll(/COMMANDS\.(\w+)\s*=\s*async/g)];
+  assert(assigns.length > 0, 'chapter5() assigns at least one COMMANDS handler');
+
+  const cmdOf = new Map();    // ending function -> {cmd, arg}
+  for (let i = 0; i < assigns.length; i++) {
+    const from = assigns[i].index;
+    const to = i + 1 < assigns.length ? assigns[i + 1].index : wiring.length;
+    const body = wiring.slice(from, to);
+    // a handler that demands a first argument rejects the bare verb —
+    // `shutdown` alone is a dead end, `shutdown --graceful` is the door.
+    const req = body.match(/\(\s*args\[0\]\s*\|\|\s*''\s*\)\s*!==\s*['"]([^'"]+)['"]/);
+    for (const fn of endingFn.values()) {
+      if (fn && new RegExp(`\\b${fn}\\s*\\(`).test(body)) {
+        cmdOf.set(fn, { cmd: assigns[i][1], arg: req ? req[1] : null });
+      }
+    }
+  }
+
+  const unwired = [...endingFn].filter(([, fn]) => !cmdOf.has(fn));
+  assert(
+    unwired.length === 0,
+    `every ending function is called by an act-v command (no way to trigger: ${unwired.map(([e, fn]) => `${e} → ${fn}()`).join(', ')})`,
+  );
+
+  /* ---- C. the click-only path can reach them too ---- */
+  // suggestCmds' `case 5` is the whole chip menu for act v. a player who
+  // never types must find every ending in there, argument included.
+  const sugg = topLevelFn('story.js', 'suggestCmds');
+  if (!assert(sugg !== null, 'story.js still declares a top-level suggestCmds()')) return;
+  const c5at = sugg.indexOf('case 5:');
+  if (!assert(c5at !== -1, 'suggestCmds() still has an act-v branch')) return;
+  const c5 = sugg.slice(c5at);
+
+  for (const [ending, fn] of endingFn) {
+    const w = cmdOf.get(fn);
+    if (!w) continue;
+    const chip = w.cmd + (w.arg ? ' ' + w.arg : '');
+    assert(
+      c5.includes(`'${chip}'`),
+      `act-v chips offer '${chip}' for the ${ending} ending (click-only path)`,
+    );
+  }
+
+  /* ---- D. the patch prerequisite: three fragments, three open doors ----
+     `patch entropy` is the one ending gated on collected state, so its
+     reachability is really three file-reads being possible. each entry
+     below names the live guard it depends on; if a guard is renamed or
+     moved the string stops matching and this fails rather than lying. */
+  const FRAGMENTS = [
+    {
+      n: 1,
+      file: 'IR-0.txt',
+      fsPath: '~/reality/DO_NOT_OPEN/IR-0.txt',
+      typed: 'cat reality/DO_NOT_OPEN/IR-0.txt',
+      flag: 'dnoUnlocked',
+      guard: "p.includes('DO_NOT_OPEN') && !G.flags.dnoUnlocked",
+    },
+    {
+      n: 2,
+      file: 'last_human.log',
+      fsPath: '~/var/log/sessions/last_human.log',
+      typed: 'cat var/log/sessions/last_human.log',
+      flag: 'knowsLog',
+      guard: "FS_VIS['~/var/log/sessions/last_human.log'] = g => !!g.flags.knowsLog",
+    },
+    {
+      n: 3,
+      file: 'entropy.yaml',
+      fsPath: '~/reality/constants/entropy.yaml',
+      typed: 'cat reality/constants/entropy.yaml',
+      flag: 'deepEntropy',
+      guard: "p.endsWith('entropy.yaml') && G.flags.deepEntropy",
+    },
+  ];
+
+  // the table can't go stale in secret: a fourth fragment added to catCmd
+  // fails here instead of quietly sitting outside the walk.
+  const awarded = new Set([...story.matchAll(/\bfragment\(\s*(\d+)\s*\)/g)].map(m => Number(m[1])));
+  const tabled = new Set(FRAGMENTS.map(f => f.n));
+  assert(
+    awarded.size === tabled.size && [...awarded].every(n => tabled.has(n)),
+    `the walk covers every fragment() award site (source: ${[...awarded].join(',')} / walked: ${[...tabled].join(',')})`,
+  );
+
+  // the menu, the handler and the chip gate must all want the same count,
+  // or `patch entropy` is offered and then refused (or never offered).
+  const thresholds = [
+    ...[...ch5.matchAll(/G\.frags\s*(?:>=|<)\s*(\d+)/g)].map(m => ({ where: 'chapter5', n: Number(m[1]) })),
+    ...[...c5.matchAll(/G\.frags\s*(?:>=|<)\s*(\d+)/g)].map(m => ({ where: 'act-v chips', n: Number(m[1]) })),
+  ];
+  assert(thresholds.length > 0, 'the fragment threshold is stated somewhere we can read it');
+  const off = thresholds.filter(t => t.n !== awarded.size);
+  assert(
+    off.length === 0,
+    `every fragment gate wants ${awarded.size} (mismatched: ${off.map(t => `${t.where} wants ${t.n}`).join(', ')})`,
+  );
+
+  // FS_VIS predicates, parsed once, so we can walk each fragment's path.
+  const vis = [...story.matchAll(/FS_VIS\['([^']+)'\]\s*=\s*([^;]+);/g)].map(m => ({ path: m[1], pred: m[2] }));
+  assert(vis.length > 0, 'story.js still registers FS_VIS predicates');
+
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  for (const f of FRAGMENTS) {
+    // the award site itself: cat this file, get this fragment.
+    assert(
+      new RegExp(`p\\.endsWith\\('${esc(f.file)}'\\)[^\\n]*fragment\\(${f.n}\\)`).test(story),
+      `catCmd awards fragment ${f.n} for reading ${f.file}`,
+    );
+    // the file exists in the FS tree literal, so the read can succeed.
+    assert(story.includes(`'${f.file}':`), `${f.file} exists as a file in story.js's FS tree`);
+    // the gate that would block that read is still the one we walked.
+    assert(story.includes(f.guard), `fragment ${f.n}'s gate is still \`${f.guard}\``);
+    // and act v opens it — set inside chapter5 itself, so resuming or
+    // jumping straight into the last room still unlocks every door.
+    assert(
+      new RegExp(`G\\.flags\\.${f.flag}\\s*=\\s*true`).test(ch5),
+      `chapter5() sets G.flags.${f.flag}, opening fragment ${f.n}'s door in act v`,
+    );
+    // the player is actually told the path (typed hint or clickable chip).
+    assert(story.includes(f.typed), `story.js hands the player \`${f.typed}\``);
+    // every FS_VIS predicate on the way down is satisfied by a flag act v sets.
+    for (const v of vis) {
+      if (f.fsPath !== v.path && !f.fsPath.startsWith(v.path + '/')) continue;
+      const flags = [...v.pred.matchAll(/g\.flags\.(\w+)/g)].map(m => m[1]);
+      assert(
+        flags.some(fl => new RegExp(`G\\.flags\\.${fl}\\s*=\\s*true`).test(ch5)),
+        `FS_VIS['${v.path}'] opens in act v for fragment ${f.n} (needs one of: ${flags.join(', ') || 'no flag at all'})`,
+      );
+    }
+  }
+
+  // fragment 2 has no act-v chip of its own — and doesn't need one, because
+  // act iv refuses to end until the player has read Miriam's log. that
+  // explore() gate is what makes the missing chip safe; if it is ever
+  // loosened, fragment 2 becomes unreachable on the click-only path and
+  // `patch entropy` goes with it. so pin the gate, not the chip.
+  const frag2Chip = c5.includes(FRAGMENTS[1].typed);
+  const ch4 = topLevelFn('finale.js', 'chapter4');
+  if (!assert(ch4 !== null, 'finale.js still declares a top-level chapter4()')) return;
+  assert(
+    frag2Chip || /explore\(\s*g\s*=>\s*g\.flags\.readMiriam\s*\)/.test(ch4),
+    'act iv blocks on readMiriam (or act v offers the log as a chip) — otherwise fragment 2 is unclickable',
+  );
+});
+
 /* ============================================================
    next mission appends its section() above this line
    ============================================================ */

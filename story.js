@@ -400,8 +400,11 @@ function registerCommands() {
   };
 
   C.sound = async (args) => {
-    if (args[0] === 'off') { G.muted = true; print('sound off', 'dim'); }
-    else if (args[0] === 'on') { G.muted = false; print('sound on', 'dim'); snd.blip(); }
+    if (args[0] === 'off') { G.muted = true; print('sound off', 'dim'); snd.hum(false); }
+    else if (args[0] === 'on') {
+      G.muted = false; print('sound on', 'dim'); snd.blip();
+      if (G.chapter >= 3) snd.hum(true);
+    }
     else print('sound on|off', 'dim');
     try { localStorage.setItem('codex_mute', G.muted ? '1' : '0'); } catch (e) {}
   };

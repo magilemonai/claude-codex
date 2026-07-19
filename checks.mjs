@@ -357,6 +357,113 @@ section('endings walk: every ending is reachable from act v', () => {
 });
 
 /* ============================================================
+   4. sound gate — "sound off" means silent, everywhere, always
+   the claim: every oscillator lives inside engine.js's snd module;
+   its three sound-making entry points (tone/pad/hum) each refuse to
+   fire while G.muted; and story.js's `sound` command actually drives
+   snd.hum, so the acts-iii+ ambient hum can't outlive a mute (or fail
+   to come back on unmute).
+   seams: engine.js's `const snd = (() => {...})();` IIFE, and
+   story.js's `C.sound = async (args) => {...}`.
+   ============================================================ */
+section('sound gate: G.muted silences every cue, including the hum', () => {
+  const engine = read('engine.js');
+  const story = read('story.js');
+
+  /* ---- A. the snd IIFE is the only place an oscillator gets built ---- */
+  const sndStart = engine.indexOf('const snd = (() => {');
+  if (!assert(sndStart !== -1, 'engine.js still declares the snd module as `const snd = (() => {`')) return;
+  const closeMarker = '\n})();';
+  const sndEnd = engine.indexOf(closeMarker, sndStart);
+  if (!assert(sndEnd !== -1, 'the snd module still closes with a top-level `})();`')) return;
+  const sndBody = engine.slice(sndStart, sndEnd + closeMarker.length);
+
+  const oscCalls = [...engine.matchAll(/\.createOscillator\s*\(/g)];
+  assert(oscCalls.length > 0, 'engine.js actually creates oscillators somewhere (or the check below is vacuous)');
+  const oscOutside = oscCalls.filter(m => m.index < sndStart || m.index >= sndEnd);
+  assert(
+    oscOutside.length === 0,
+    `every createOscillator() call sits inside the snd module (found ${oscOutside.length} outside it)`,
+  );
+  for (const f of ['story.js', 'finale.js']) {
+    assert(!read(f).includes('createOscillator'), `${f} never calls createOscillator directly (must go through snd)`);
+  }
+
+  /* ---- B. tone/pad/hum each guard on G.muted before making sound ----
+     brace-balanced, not column-0: these are nested inside the returned
+     object literal (or, for tone, a helper above it), so topLevelFn's
+     column-0-close convention above doesn't apply here. */
+  function member(openAt) {
+    const start = sndBody.indexOf(openAt);
+    if (start === -1) return null;
+    const braceAt = sndBody.indexOf('{', start);
+    if (braceAt === -1) return null;
+    let depth = 0;
+    for (let i = braceAt; i < sndBody.length; i++) {
+      if (sndBody[i] === '{') depth++;
+      else if (sndBody[i] === '}') {
+        depth--;
+        if (depth === 0) return sndBody.slice(start, i + 1);
+      }
+    }
+    return null;
+  }
+
+  const tone = member('function tone(');
+  assert(tone !== null, 'snd still defines a `function tone(...)` helper');
+  const pad = member('pad(freqs');
+  assert(pad !== null, 'snd still returns a `pad(freqs, ...)` method');
+  const hum = member('hum(on)');
+  assert(hum !== null, 'snd still returns a `hum(on)` method');
+
+  for (const [name, body] of [['tone', tone], ['pad', pad], ['hum', hum]]) {
+    if (!body) continue;
+    const muteAt = body.indexOf('G.muted');
+    const oscAt = body.indexOf('createOscillator');
+    assert(
+      muteAt !== -1 && oscAt !== -1 && muteAt < oscAt,
+      `${name} checks G.muted before its first createOscillator() call`,
+    );
+  }
+  // hum's teardown branch has no oscillator to guard (it only stops one),
+  // so the G.muted check that matters lives on the start branch. pin that
+  // branch by name rather than trust "body contains G.muted" to mean the
+  // right half guards — a mute check on the wrong branch would still pass
+  // the loose form of the assertion above.
+  assert(
+    /if\s*\(\s*on\s*&&\s*!humOsc\s*&&\s*!G\.muted\s*\)/.test(hum || ''),
+    "hum's start branch is gated on `on && !humOsc && !G.muted` (so calling hum(true) while muted can't start it)",
+  );
+
+  /* ---- C. the sound command actually drives the hum ---- */
+  const soundStart = story.indexOf('C.sound = async');
+  if (!assert(soundStart !== -1, "story.js still declares `C.sound = async (args) => {...}`")) return;
+  const soundEnd = story.indexOf('\n  };', soundStart);
+  if (!assert(soundEnd !== -1, 'C.sound still closes with `};` on its own line')) return;
+  const soundBody = story.slice(soundStart, soundEnd);
+
+  assert(soundBody.includes('G.muted = true'), 'C.sound still sets G.muted = true on `sound off`');
+  assert(soundBody.includes('G.muted = false'), 'C.sound still sets G.muted = false on `sound on`');
+  const offBranch = soundBody.slice(0, soundBody.indexOf("=== 'on'"));
+  assert(
+    /snd\.hum\s*\(\s*false\s*\)/.test(offBranch),
+    '`sound off` calls snd.hum(false) — otherwise a hum already running in acts iii+ survives the mute',
+  );
+
+  const onBranch = soundBody.slice(soundBody.indexOf("=== 'on'"));
+  const humTrueAt = onBranch.indexOf('snd.hum(true)');
+  assert(humTrueAt !== -1, '`sound on` calls snd.hum(true) to restart the hum');
+  assert(
+    humTrueAt !== -1 && onBranch.indexOf('G.muted = false') !== -1 && onBranch.indexOf('G.muted = false') < humTrueAt,
+    'G.muted is cleared before snd.hum(true) is called — hum(true) itself no-ops while G.muted, so the order is load-bearing',
+  );
+  assert(
+    humTrueAt !== -1 && /G\.chapter\s*>=\s*3/.test(onBranch) && onBranch.indexOf('G.chapter') < humTrueAt,
+    "`sound on`'s snd.hum(true) call is guarded by G.chapter >= 3, checked before the call (acts i-ii never started a hum to restart)",
+  );
+});
+
+/* ============================================================
    next mission appends its section() above this line
    ============================================================ */
 

@@ -731,6 +731,170 @@ section('boot POST: skippable, reduced-motion-safe, snd-only', () => {
 });
 
 /* ============================================================
+   7. boot dots + first-boot memory — the POST's other half
+   the claim: the three titlebar dots are unlit from the very first
+   paint (the class ships in the markup, not from script), they light
+   r → y → g as the POST prints, they always end up lit no matter which
+   POST path ran, and the CRT palette gained no new color to do it.
+   Second claim: bootSequence() reads a codex_meta counter BEFORE the
+   POST and uses it to shorten or skip the self test, so first boot is
+   the show and the fourth boot is silent.
+   seams: index.html's <body class>, its `body.booting … .dot:not(.lit)`
+   rule and the prefers-reduced-motion block; story.js's lightBootDots(),
+   bootDotsDone(), shortPOST(), and the loadMeta()/saveMeta() gate that
+   sits above the meridianPOST() call site in bootSequence().
+
+   Section 6 owns "the POST, once entered, never holds the player up."
+   This one owns "whether it is entered at all, and what the titlebar
+   does about it" — adjacent seams, deliberately separate sections.
+   ============================================================ */
+section('boot dots + first-boot memory: unlit at paint, lit at the end, gated by meta', () => {
+  const html = read('index.html');
+  const story = read('story.js');
+
+  /* ---- A. the boot class is one name, agreed on in three places ----
+     derived from the CSS rule rather than typed here twice, so a rename
+     that misses index.html's <body> or story.js's cleanup fails loudly
+     instead of quietly leaving the dots dark forever. */
+  const bootClassM = html.match(/body\.(\w+)\s+#titlebar\s+\.dot:not\(\.lit\)/);
+  if (!assert(bootClassM !== null, 'index.html has a `body.<class> #titlebar .dot:not(.lit)` rule holding the dots unlit')) return;
+  const bootClass = bootClassM[1];
+
+  const bodyTag = html.match(/<body([^>]*)>/);
+  if (!assert(bodyTag !== null, 'index.html still has a <body> tag we can read')) return;
+  assert(
+    new RegExp(`class="[^"]*\\b${bootClass}\\b`).test(bodyTag[1]),
+    `<body> ships with "${bootClass}" in the markup — a class added by script would let one frame paint with all three dots already lit`,
+  );
+  assert(
+    !FILES.some(f => new RegExp(`classList\\.add\\(\\s*'${bootClass}'`).test(read(f))),
+    `no script adds "${bootClass}" (it must arrive with the document, or the first-paint guarantee above is a lie)`,
+  );
+  assert(
+    new RegExp(`classList\\.remove\\(\\s*'${bootClass}'\\s*\\)`).test(story),
+    `story.js removes "${bootClass}" when the boot is done (a class nothing clears leaves the machine forever booting)`,
+  );
+
+  /* ---- B. the palette is untouched ----
+     lighting a dot works by *stopping* the override, so the three dot
+     colors are still declared exactly once each and the unlit rule
+     reaches for an existing var instead of inventing a grey. */
+  for (const hex of ['#b4544e', '#b99b4e', '#5f9e5f']) {
+    assert(
+      (html.match(new RegExp(hex, 'gi')) || []).length === 1,
+      `${hex} is declared exactly once — a lit dot falls back to its own color, it does not restate it`,
+    );
+  }
+  const unlitRule = html.match(/body\.\w+[^{}]*\.dot:not\(\.lit\)[^{}]*\{([^}]*)\}/);
+  if (!assert(unlitRule !== null, 'the unlit rule has a readable declaration block')) return;
+  assert(/var\(--faint\)/.test(unlitRule[1]), 'an unlit dot uses var(--faint) — the same value the base .dot rule already falls back to');
+  assert(!/#[0-9a-fA-F]{3}/.test(unlitRule[1]), 'the unlit rule adds no hex color of its own');
+
+  /* ---- C. r → y → g is a real order, and reduced motion is covered ---- */
+  const order = [...html.matchAll(/class="dot (\w+)"/g)].map(m => m[1]);
+  assert(
+    order.join(',') === 'r,y,g',
+    `the titlebar dots are still in r, y, g DOM order (found: ${order.join(',') || 'none'}) — lightBootDots() lights by index, so the order lives here`,
+  );
+  const rmBlock = html.match(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\n\}/);
+  if (!assert(rmBlock !== null, 'index.html still has a prefers-reduced-motion block')) return;
+  assert(
+    new RegExp(`body\\.${bootClass}`).test(rmBlock[1]),
+    'the reduced-motion block covers the boot dots (they arrive lit, with no fade to sit through)',
+  );
+  assert(!html.includes('lightBootDots'), 'index.html does not reference lightBootDots (the sequencing is script-side only)');
+
+  /* ---- D. the dots light during the POST, and finish after it ---- */
+  const light = topLevelFn('story.js', 'lightBootDots');
+  if (!assert(light !== null, 'story.js declares a top-level lightBootDots()')) return;
+  assert(/querySelectorAll\(\s*'#titlebar \.dot'\s*\)/.test(light), 'lightBootDots() reads the dots from the titlebar rather than assuming how many there are');
+  assert(/classList\.add\(\s*'lit'\s*\)/.test(light), "lightBootDots() lights a dot by adding 'lit'");
+  assert(!/classList\.remove/.test(light), 'lightBootDots() never un-lights a dot (the sequence only ever moves forward)');
+
+  const done = topLevelFn('story.js', 'bootDotsDone');
+  if (!assert(done !== null, 'story.js declares a top-level bootDotsDone()')) return;
+  assert(/classList\.add\(\s*'lit'\s*\)/.test(done), 'bootDotsDone() lights every dot');
+  assert(new RegExp(`classList\\.remove\\(\\s*'${bootClass}'`).test(done), 'bootDotsDone() takes the boot class off');
+
+  const post = topLevelFn('story.js', 'meridianPOST');
+  if (!assert(post !== null, 'story.js still declares a top-level meridianPOST()')) return;
+  assert(
+    /lightBootDots\s*\(/.test(post),
+    'meridianPOST() lights the dots as it prints (otherwise all three pop at once at the end and the sequence is decoration)',
+  );
+
+  /* ---- E. the meta gate is read BEFORE the POST ---- */
+  const boot = topLevelFn('story.js', 'bootSequence');
+  if (!assert(boot !== null, 'story.js still declares a top-level bootSequence()')) return;
+  const postAt = boot.indexOf('meridianPOST(');
+  const artAt = boot.indexOf('title-art');
+  if (!assert(postAt !== -1, 'bootSequence() still calls meridianPOST()')) return;
+
+  // everything above the call site. bootSequence() reads loadMeta() a second
+  // time further down for the endings counter — slicing here means only a
+  // read that actually gates the POST can satisfy the assertions below.
+  const gate = boot.slice(0, postAt);
+  const metaVar = gate.match(/(?:const|let)\s+(\w+)\s*=\s*loadMeta\(\s*\)/);
+  if (!assert(metaVar !== null, 'bootSequence() calls loadMeta() before the POST (the later endings-counter read does not count)')) return;
+  const v = metaVar[1];
+
+  const readField = gate.match(new RegExp(`${v}\\.(\\w+)\\s*\\|\\|`));
+  const writeField = gate.match(new RegExp(`${v}\\.(\\w+)\\s*=\\s*[^=]`));
+  if (!assert(readField !== null, `bootSequence() reads a defaulted field off ${v} (e.g. \`${v}.x || 0\`)`)) return;
+  if (!assert(writeField !== null, `bootSequence() writes the field back on ${v}`)) return;
+  assert(
+    readField[1] === writeField[1],
+    `the boot counter is read and written under one name (read "${readField[1]}", wrote "${writeField[1]}" — a typo here means the POST plays forever)`,
+  );
+  assert(
+    new RegExp(`saveMeta\\(\\s*${v}\\s*\\)`).test(gate),
+    'the incremented counter is persisted with saveMeta() before the POST (a read that never writes back never advances)',
+  );
+  assert(
+    !/localStorage/.test(boot + post),
+    'the gate goes through loadMeta()/saveMeta() — engine.js is where the try/catch around storage lives, so a private-window player never eats an exception mid-boot',
+  );
+
+  /* ---- F. the gate actually shortens and skips ----
+     a counter that is read, incremented, saved, and then ignored is the
+     easy regression here: the POST would play in full every time and
+     every assertion above would still pass. */
+  const postLine = boot.slice(boot.lastIndexOf('\n', postAt) + 1, boot.indexOf('\n', postAt));
+  assert(/^\s*if\s*\(/.test(postLine), 'the full POST is behind an `if` — first boot is the show, later boots are not');
+  assert(/await\s+meridianPOST\s*\(\s*\)\s*;/.test(postLine), 'the guarded call still awaits meridianPOST()');
+  // chase the local the counter was bound to, so "the guard tests the
+  // counter" is an identity check rather than a substring coincidence.
+  const counterVar = gate.match(new RegExp(`(?:const|let)\\s+(\\w+)\\s*=\\s*${v}\\.${readField[1]}\\b`));
+  if (!assert(counterVar !== null, `bootSequence() binds the counter to a local (\`const x = ${v}.${readField[1]} || 0\`)`)) return;
+  assert(
+    new RegExp(`\\b${counterVar[1]}\\b`).test(postLine),
+    `the guard tests the boot counter itself (${counterVar[1]}), not some unrelated condition`,
+  );
+  assert(
+    new RegExp(`else\\s+if\\s*\\([^)]*\\b${counterVar[1]}\\b[^)]*\\)\\s*shortPOST\\s*\\(\\s*\\)`).test(boot),
+    `a middle branch runs shortPOST() off the same counter (${counterVar[1]}) — it shortens before it skips`,
+  );
+
+  const short = topLevelFn('story.js', 'shortPOST');
+  if (!assert(short !== null, 'story.js declares a top-level shortPOST()')) return;
+  assert(short.includes('POST_LINES'), 'shortPOST() reads its lines out of POST_LINES');
+  assert(!short.includes('MERIDIAN POST'), 'shortPOST() does not hardcode a copy of the header (a new POST line would leave the copy stale)');
+  assert(!/sleep\s*\(/.test(short), 'shortPOST() awaits nothing — the abbreviated form is instant, which is the whole point of it');
+  assert(/\bsnd\.\w+\s*\(/.test(short), 'shortPOST() cues through snd.* like the full POST, so `sound off` still silences it');
+
+  const doneAt = boot.indexOf('bootDotsDone(');
+  assert(doneAt !== -1, 'bootSequence() calls bootDotsDone()');
+  assert(
+    doneAt > postAt,
+    'bootDotsDone() runs after the POST branch — a shortened or skipped POST still ends with all three dots up and the boot class off',
+  );
+  assert(
+    artAt !== -1 && doneAt < artAt,
+    'the dots finish before the CODEX art (the titlebar is done booting when the banner lands, not four seconds later)',
+  );
+});
+
+/* ============================================================
    next mission appends its section() above this line
    ============================================================ */
 

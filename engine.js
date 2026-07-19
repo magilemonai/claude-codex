@@ -706,6 +706,14 @@ async function handleLine(raw) {
     await fallbackHandler(line);
   }
   tick();
+  // progress is state, not milestones. an act can hold twenty commands and
+  // three decisions, and all of them used to die with a closed tab — save()
+  // only ran at chapter entry. persist here instead: after the command has
+  // fully run and after tick() has opened whatever gates it opened, so what
+  // lands in localStorage is exactly what the player just watched happen.
+  // paths that end the session (the endings, `codex --jump`) await forever
+  // before returning, so they never come back through here to double-write.
+  save(G.chapter);
 }
 
 /* explore loop — story yields control to the player until pred(G) is true */

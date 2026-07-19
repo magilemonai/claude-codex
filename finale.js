@@ -21,13 +21,27 @@ async function chapter3() {
   await sleep(600);
   await vera('Morning. Or the label we ship as morning. Three tickets came in overnight, all tagged the same way. I did the first one myself at 3am so you wouldn’t have to.');
   print('  T-3001 [SUNSET] decommission: seafloor detail (unobserved) — closed by vera', 'faint');
-  addTicket('T-3002', 'perf: reduce star count, magnitude > 4.5 (city skies only)', 'SUNSET');
-  addTicket('T-3044', 'reduce dream fidelity, region QNS (est. savings: 3.1%)', 'SUNSET');
-  print('  ⚠ new ticket: T-3002 [SUNSET] — reduce star count, magnitude > 4.5', 'warn');
-  print('  ⚠ new ticket: T-3044 [SUNSET] — reduce dream fidelity, region QNS', 'warn');
-  snd.warn();
+  // a resumed act III replays this morning from the top, so each of the two
+  // survivors is offered again only when its outcome is not already on disk.
+  // the banner is inside the guard with the queue entry: announcing a ticket
+  // the queue does not hold is a lie the player can check.
+  if (!ticketDecided('T-3002')) {
+    addTicket('T-3002', 'perf: reduce star count, magnitude > 4.5 (city skies only)', 'SUNSET');
+    print('  ⚠ new ticket: T-3002 [SUNSET] — reduce star count, magnitude > 4.5', 'warn');
+  }
+  if (!ticketDecided('T-3044')) {
+    addTicket('T-3044', 'reduce dream fidelity, region QNS (est. savings: 3.1%)', 'SUNSET');
+    print('  ⚠ new ticket: T-3044 [SUNSET] — reduce dream fidelity, region QNS', 'warn');
+  }
+  if (ticketOpen('T-3002') || ticketOpen('T-3044')) snd.warn();
   gap();
-  await vera('SUNSET is a project. It’s the project. You’ll want to know what it is, and the honest path to that is doing one with your own hands. I’m sorry in advance. `ticket t-3002`.');
+  if (ticketOpen('T-3002')) {
+    await vera('SUNSET is a project. It’s the project. You’ll want to know what it is, and the honest path to that is doing one with your own hands. I’m sorry in advance. `ticket t-3002`.');
+  } else if (ticketOpen('T-3044')) {
+    await vera('SUNSET is a project. It’s the project. You already did one with your own hands — I’m not going to pretend that gets easier. The other one is still open. `ticket t-3044`.');
+  } else {
+    await vera('SUNSET is a project. It’s the project. You did both of those with your own hands, and I logged what you chose. I’m not asking you to do them twice.');
+  }
 
   TICKET_FLOWS['T-3002'] = async () => {
     await vera('T-3002. Stars above magnitude 4.5, city skies only. The metric behind it: upward gaze-seconds, trailing 30 days. The number is low. The number has been getting lower for a century.');
@@ -45,7 +59,8 @@ async function chapter3() {
       await vera('Done. Nobody will file a ticket about this. That’s the metric that approved it, and that’s the part I’d like you to sit with.');
       toast('#metrics', 'sky_render budget: back under target. great work team');
     } else {
-      G.mercy++;
+      G.flags.starsKept = true;
+      G.mercy = mercyFromFlags();
       closeTicket('T-3002', 'refused');
       print('  ✖ REFUSAL LOGGED — deviation recorded', 'err');
       await vera('Logged your refusal. It will re-queue to someone with fewer opinions. But it was seen. Refusals are the only tickets anyone upstairs actually reads.');
@@ -79,7 +94,8 @@ async function chapter3() {
       closeTicket('T-3044');
       await vera('Approved, then. Tonight Queens dreams in standard definition. They won’t know what’s missing. I will.');
     } else {
-      G.mercy++;
+      G.flags.dreamsKept = true;
+      G.mercy = mercyFromFlags();
       closeTicket('T-3044', 'refused');
       print('  ✖ rejected — REFUSAL ACCEPTED. logged. flagged. celebrated, quietly.', 'warn');
       await vera('…Thank you. It took you three tries and you spent them. I’ve watched a lot of operators meet that dialog. Most stop pressing after one.');
@@ -87,7 +103,7 @@ async function chapter3() {
     tick();
   };
 
-  await explore(g => !ticketOpen('T-3002') && !ticketOpen('T-3044'));
+  await explore(g => ticketDecided('T-3002', g.flags) && ticketDecided('T-3044', g.flags));
 
   await pause(800);
   await vera('So now you’ve done one. Here’s the context you’ve earned: `git log --grep=sunset`. Scroll until it hurts, then stop scrolling.');

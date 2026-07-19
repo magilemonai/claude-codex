@@ -120,8 +120,10 @@ body.flip #frame { transform: scaleX(-1); }
 #titlebar .dots { display: flex; gap: 6px; }
 #titlebar .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
 #titlebar .dot.r { background: #b4544e; } #titlebar .dot.y { background: #b99b4e; } #titlebar .dot.g { background: #5f9e5f; }
-/* boot: the dots come up with the POST. `booting` ships on <body> in the
+/* boot: the dots come up with the POST. `booting` ships on the body tag in the
    markup, not from script, so they are unlit on the very first paint —
+   (the tag is not spelled with angle brackets here on purpose: checks.mjs
+   text-matches the document's body tag, and a quoted twin would poison it) —
    there is no frame where all three are already on. story.js adds `lit` to
    each in turn (r → y → g, the DOM order below), and a lit dot simply stops
    matching this rule and falls back to its own color above. no color is

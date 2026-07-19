@@ -829,6 +829,66 @@ function statusLine() {
 /* ============================================================
    BOOT
    ============================================================ */
+
+/* ---------------- power-on self test ----------------
+   chrome, not story: nothing below sets a flag, reads a save, or gates
+   a scene — it is the machine clearing its throat before the art. so it
+   must never hold the player up. any key or click fills the rest of the
+   block at once, prefers-reduced-motion prints all of it instantly, and
+   every cue goes through snd.* (already mute-aware via tone()'s G.muted
+   guard). runs on every boot for now. */
+const POST_LINES = [
+  ['MERIDIAN POST v5.1 — power-on self test', 'dim'],
+  ['  motd: the queue survived the weekend. it always does.', 'faint'],
+  ['  memory ............ ok', 'ok'],
+  ['  net ............... ok — localhost only, as promised', 'ok'],
+  ['  mounting reality/ . ok — legacy naming convention, nobody has renamed it', 'ok'],
+  ['  handshake: VERA ... online', 'ok'],
+  ['  self-test complete — 0 errors', 'dim'],
+];
+
+async function meridianPOST() {
+  // reduced motion: the whole block at once — no typing, no pauses.
+  const reduced = typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) {
+    for (const [text, cls] of POST_LINES) print(text, cls);
+    snd.pop();
+    gap();
+    return;
+  }
+
+  /* any key or click cuts the POST short. the engine's global keydown
+     bumps skipRequested for us, but a click doesn't, and skipTyping only
+     lives 30ms — far too short to carry across seven lines. so latch a
+     local flag for the run and read all three sources. */
+  let cutRequested = false;
+  const cutIn = () => { cutRequested = true; };
+  const mark = skipRequested;
+  const skip = () => cutRequested || skipTyping || skipRequested !== mark;
+  document.addEventListener('keydown', cutIn, true);
+  document.addEventListener('click', cutIn, true);
+
+  try {
+    for (const [text, cls] of POST_LINES) {
+      if (skip()) { print(text, cls); continue; }       // already cut — whole line, no wait
+      const el = print('', cls);
+      for (let i = 0; i < text.length; i++) {
+        if (skip()) { el.textContent = text; break; }   // skip check inside the typing loop
+        el.textContent += text[i];
+        await sleep(4);
+      }
+      snd.tick();
+      if (!skip()) await sleep(70);
+    }
+  } finally {
+    document.removeEventListener('keydown', cutIn, true);
+    document.removeEventListener('click', cutIn, true);
+  }
+  snd.pop();
+  gap();
+}
+
 async function bootSequence(sv) {
   if (sv && (!sv.ch || sv.ch <= 1)) {
     // a reboot from an ending — carry the loop across
@@ -840,6 +900,7 @@ async function bootSequence(sv) {
   setCtx(null);
 
   print('', '');
+  await meridianPOST();
   const art = [
     ' ██████╗ ██████╗ ██████╗ ███████╗██╗  ██╗',
     '██╔════╝██╔═══██╗██╔══██╗██╔════╝╚██╗██╔╝',

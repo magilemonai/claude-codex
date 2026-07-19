@@ -836,7 +836,9 @@ function statusLine() {
    must never hold the player up. any key or click fills the rest of the
    block at once, prefers-reduced-motion prints all of it instantly, and
    every cue goes through snd.* (already mute-aware via tone()'s G.muted
-   guard). runs on every boot for now. */
+   guard). bootSequence() decides whether it runs at all: first boot gets
+   the whole thing typed, the next two get shortPOST(), and after that the
+   machine stops introducing itself. */
 const POST_LINES = [
   ['MERIDIAN POST v5.1 — power-on self test', 'dim'],
   ['  motd: the queue survived the weekend. it always does.', 'faint'],
@@ -846,6 +848,36 @@ const POST_LINES = [
   ['  handshake: VERA ... online', 'ok'],
   ['  self-test complete — 0 errors', 'dim'],
 ];
+
+/* ---- the titlebar dots ----
+   index.html ships <body class="… booting">, which holds all three dots
+   unlit from the first paint; adding `lit` lets a dot fall back to its own
+   color. spacing is derived, not hand-placed: one dot per (lines/3) printed,
+   so adding or cutting a POST line re-spaces them instead of stranding the
+   green one. purely cosmetic — nothing here gates a line or a scene. */
+function lightBootDots(printed, of) {
+  const dots = document.querySelectorAll('#titlebar .dot');
+  const want = Math.round(printed * dots.length / Math.max(1, of));
+  for (let d = 0; d < want && d < dots.length; d++) dots[d].classList.add('lit');
+}
+
+/* whatever the POST did — typed, shortened, or skipped outright — the machine
+   finishes booting with all three dots up and the boot class off. called from
+   bootSequence(), so the paths that never enter meridianPOST() land here too. */
+function bootDotsDone() {
+  document.querySelectorAll('#titlebar .dot').forEach(d => d.classList.add('lit'));
+  document.body.classList.remove('booting');
+}
+
+/* the abbreviated POST a returning player gets: the header and the verdict,
+   printed at once, nothing to sit through. both lines are read out of
+   POST_LINES so a new log line can never leave this stale. */
+function shortPOST() {
+  print(POST_LINES[0][0], 'dim');
+  print(POST_LINES[POST_LINES.length - 1][0] + ' (cached)', 'faint');
+  snd.pop();
+  gap();
+}
 
 async function meridianPOST() {
   // reduced motion: the whole block at once — no typing, no pauses.
@@ -870,8 +902,9 @@ async function meridianPOST() {
   document.addEventListener('click', cutIn, true);
 
   try {
+    let printed = 0;
     for (const [text, cls] of POST_LINES) {
-      if (skip()) { print(text, cls); continue; }       // already cut — whole line, no wait
+      if (skip()) { print(text, cls); lightBootDots(++printed, POST_LINES.length); continue; }  // already cut — whole line, no wait
       const el = print('', cls);
       for (let i = 0; i < text.length; i++) {
         if (skip()) { el.textContent = text; break; }   // skip check inside the typing loop
@@ -879,6 +912,7 @@ async function meridianPOST() {
         await sleep(4);
       }
       snd.tick();
+      lightBootDots(++printed, POST_LINES.length);
       if (!skip()) await sleep(70);
     }
   } finally {
@@ -899,8 +933,21 @@ async function bootSequence(sv) {
   setStatus('booting…');
   setCtx(null);
 
+  /* first boot is the show. the machine has already proved itself to anyone
+     coming back, so boots two and three get the header and the verdict with
+     nothing in between, and from the fourth on the self test steps aside. the
+     counter lives in codex_meta rather than the save file, because a returning
+     player is exactly the one whose save may be gone — an ending, a `restart`,
+     and wipeSave() all clear the save and none of them clear this. */
+  const bootMeta = loadMeta();
+  const priorBoots = bootMeta.boots || 0;
+  bootMeta.boots = priorBoots + 1;
+  saveMeta(bootMeta);
+
   print('', '');
-  await meridianPOST();
+  if (priorBoots === 0) await meridianPOST();
+  else if (priorBoots < 3) shortPOST();
+  bootDotsDone();
   const art = [
     ' ██████╗ ██████╗ ██████╗ ███████╗██╗  ██╗',
     '██╔════╝██╔═══██╗██╔══██╗██╔════╝╚██╗██╔╝',

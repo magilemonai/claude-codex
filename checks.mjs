@@ -464,6 +464,132 @@ section('sound gate: G.muted silences every cue, including the hum', () => {
 });
 
 /* ============================================================
+   5. save timing — progress persists at the moment of choice
+   the claim: every completed command writes the save, so mid-act
+   state (mercy, frags, purgedQNS/starsCut and friends) survives a
+   closed tab; nothing relies on an unload handler to do it; and the
+   session-ending paths await forever instead of falling back through
+   handleLine's tail to write a second time.
+   seams: engine.js's handleLine() tail, its save() payload,
+   story.js's bootSequence() resume branch, explore()'s dispatch
+   call, and every location.reload() call site in finale.js.
+
+   `codex --jump <act>` (finale.js) took the forever-await rather
+   than keeping its idempotent double-write — same idiom as the two
+   endings that reload, and seam E below now covers all three at once.
+
+   NOT pinned here, and worth knowing: resume replays an act from the
+   top, and the explore() gates keyed on ticket state rather than on
+   G.flags do not pass instantly, because G.tickets/G.closed are the
+   two pieces of state save() has never persisted. See DISPATCH.md
+   (## the hand-trace) for the two gates and the mercy miscount they
+   allow. That is a live hazard, not a promise, so it gets no
+   assertion that would pass today and fail on the fix.
+   ============================================================ */
+section('save timing: every command persists, no unload handler', () => {
+  const engine = read('engine.js');
+
+  /* ---- A. handleLine ends with tick() and then the save ----
+     order is load-bearing both ways: tick() before save, so flags any
+     gate flipped are in the payload; save last, so a command that ran
+     to completion is on disk before the player can close anything. */
+  const handleLine = topLevelFn('engine.js', 'handleLine');
+  if (!assert(handleLine !== null, 'engine.js still declares a top-level handleLine()')) return;
+
+  const stmts = handleLine
+    .split('\n')
+    .slice(1, -1)                                   // drop the signature and the closing brace
+    .map(l => l.trim())
+    .filter(l => l !== '' && !l.startsWith('//') && !l.startsWith('/*') && !l.startsWith('*'));
+  const tail = stmts.slice(-2);
+  assert(
+    tail[0] === 'tick();',
+    `handleLine's second-to-last statement is tick() (found: ${tail[0] || 'nothing'})`,
+  );
+  assert(
+    /^save\(\s*G\.chapter\s*\);$/.test(tail[1] || ''),
+    `handleLine's last statement is save(G.chapter) (found: ${tail[1] || 'nothing'})`,
+  );
+
+  /* ---- B. that tail is on the live player path ----
+     explore() is the only thing that dispatches a typed or clicked line;
+     if it ever stopped routing through handleLine, section A would still
+     pass while nothing on the player's path saved at all. */
+  const explore = topLevelFn('engine.js', 'explore');
+  if (!assert(explore !== null, 'engine.js still declares a top-level explore()')) return;
+  assert(
+    /await\s+handleLine\s*\(/.test(explore),
+    'explore() still dispatches through handleLine (the tail save rides on this call)',
+  );
+  const dispatchers = [...engine.matchAll(/\bawait\s+handleLine\s*\(/g)].length;
+  assert(dispatchers === 1, `handleLine has exactly one call site (found ${dispatchers})`);
+
+  /* ---- C. the payload is worth saving, and boot reads all of it ----
+     saving on every command only buys anything if the fields that move
+     mid-act are in the blob AND the resume branch restores them. a key
+     dropped from either side is a silent half-save. */
+  const saveFn = topLevelFn('engine.js', 'save');
+  if (!assert(saveFn !== null, 'engine.js still declares a top-level save()')) return;
+  assert(saveFn.includes("localStorage.setItem('codex_save'"), "save() still writes the 'codex_save' key");
+
+  const payload = saveFn.match(/JSON\.stringify\(\{([\s\S]*?)\}\)\)/);
+  if (!assert(payload !== null, "save()'s payload is an object literal we can read statically")) return;
+  const keys = payload[1]
+    .split(',')
+    .map(part => part.split(':')[0].trim())
+    .filter(k => /^\w+$/.test(k));
+  for (const k of ['ch', 'mercy', 'frags', 'flags']) {
+    assert(keys.includes(k), `save() persists ${k} (mid-act state is the whole point of the tail save)`);
+  }
+
+  const boot = topLevelFn('story.js', 'bootSequence');
+  if (!assert(boot !== null, 'story.js still declares a top-level bootSequence()')) return;
+  const unread = keys.filter(k => !new RegExp(`\\bsv\\.${k}\\b`).test(boot));
+  assert(
+    unread.length === 0,
+    `bootSequence() reads back every key save() writes (written but never restored: ${unread.join(', ')})`,
+  );
+
+  /* ---- D. nothing leans on an unload handler ----
+     beforeunload is unreliable on mobile Safari and on any tab the OS
+     discards, and it would paper over a missing save with something that
+     works on the desk and not on the train. the tail save is the mechanism;
+     there is no second one. */
+  for (const f of FILES) {
+    const hits = [...read(f).matchAll(/\b(?:beforeunload|onunload)\b/g)].length;
+    assert(hits === 0, `${f} registers no unload handler (found ${hits})`);
+  }
+
+  /* ---- E. session-ending paths never return to the tail ----
+     location.reload() does not stop the current task — it schedules a
+     navigation and lets the rest of the function run. so any reload that
+     isn't followed by a forever-await falls back out through handleLine
+     and writes the save a second time. the two endings that reboot
+     already used this idiom; `codex --jump` now does too. */
+  const FOREVER = /^await\s+new\s+Promise\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)\s*;/;
+  let reloads = 0;
+  for (const f of FILES) {
+    const lines = read(f).split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (!/\blocation\.reload\s*\(\s*\)/.test(lines[i])) continue;
+      reloads++;
+      let next = '';
+      for (let j = i + 1; j < lines.length; j++) {
+        const t = lines[j].trim();
+        if (t === '' || t.startsWith('//')) continue;
+        next = t;
+        break;
+      }
+      assert(
+        FOREVER.test(next),
+        `${f}:${i + 1} awaits forever after location.reload() (found: ${next || 'end of file'})`,
+      );
+    }
+  }
+  assert(reloads > 0, 'there are reload call sites to check (or the rule above is vacuous)');
+});
+
+/* ============================================================
    next mission appends its section() above this line
    ============================================================ */
 

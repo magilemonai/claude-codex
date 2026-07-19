@@ -568,6 +568,8 @@ async function main() {
       const n = Math.max(1, Math.min(5, parseInt(args[1], 10) || 1));
       save(n);
       location.reload();
+      await new Promise(() => {});   // the endings' idiom: the reload is in
+      // flight, so don't return into handleLine's tail save and write again.
     } else {
       print('codex v5.1.0 — you are already inside it', 'dim');
     }

@@ -478,13 +478,15 @@ section('sound gate: G.muted silences every cue, including the hum', () => {
    than keeping its idempotent double-write — same idiom as the two
    endings that reload, and seam E below now covers all three at once.
 
-   NOT pinned here, and worth knowing: resume replays an act from the
-   top, and the explore() gates keyed on ticket state rather than on
-   G.flags do not pass instantly, because G.tickets/G.closed are the
-   two pieces of state save() has never persisted. See DISPATCH.md
-   (## the hand-trace) for the two gates and the mercy miscount they
-   allow. That is a live hazard, not a promise, so it gets no
-   assertion that would pass today and fail on the fix.
+   NOT pinned here, and deliberately so at the time: resume replays an
+   act from the top, and the explore() gates keyed on ticket state
+   rather than on the flag bag did not pass instantly, because the
+   open and closed lists are the two pieces of state save() has never
+   persisted. That was a live hazard when this section shipped, so it
+   got no assertion that would have passed on the bug and failed on
+   the fix. The fix has since landed — section 8 below owns it, and
+   this paragraph is left standing as the record of why the gap was
+   here. Section 5's own assertions are unchanged.
    ============================================================ */
 section('save timing: every command persists, no unload handler', () => {
   const engine = read('engine.js');
@@ -892,6 +894,169 @@ section('boot dots + first-boot memory: unlit at paint, lit at the end, gated by
     artAt !== -1 && doneAt < artAt,
     'the dots finish before the CODEX art (the titlebar is done booting when the banner lands, not four seconds later)',
   );
+});
+
+/* ============================================================
+   8. ticket idempotence — a decided ticket never re-queues
+   the claim: acts II and III replay from the top on resume, and the
+   queue does not survive a reload (save() persists the flag bag and
+   nothing else about tickets). So every re-add site in those two acts
+   asks the flags whether the player already answered that ticket, no
+   explore() gate in those acts is keyed on queue state, and the
+   refusal count is derived from the per-ticket decision flags rather
+   than nudged upward at the moment of deciding — which is what let a
+   re-queued-then-refused ticket count itself twice.
+   the model is act V, which recomputes its fragment count from the
+   three fragment flags instead of trusting a tally.
+   seams: story.js's TICKET_DECISION table, ticketDecided() and
+   mercyFromFlags(); the re-add guards and explore() gates inside
+   chapter2() and chapter3(); and every assignment to the refusal
+   count across the three scripts.
+
+   Section 5 owns "a finished command is on disk." This one owns
+   "loading that disk back does not redo work or double-count it" —
+   the other half of the same promise, and the reason section 5's
+   note above stops where it does.
+   ============================================================ */
+section('ticket idempotence: decided tickets do not re-queue or re-count on resume', () => {
+  const story = read('story.js');
+  const sources = FILES.map(f => read(f)).join('\n');
+
+  /* ---- A. the decision table is real, and every flag in it is set ----
+     a row that names a flag nothing ever writes is a ticket that can
+     never be decided, which reads as "always re-queue" at every site
+     below while every other assertion still passes. */
+  const tableM = story.match(/const TICKET_DECISION\s*=\s*\{([\s\S]*?)\n\};/);
+  if (!assert(tableM !== null, 'story.js declares a readable TICKET_DECISION table')) return;
+
+  const rows = [...tableM[1].split('\n')]
+    .map(l => l.split('//')[0])
+    .map(l => l.match(/'([^']+)'\s*:\s*\w+\s*=>\s*(.+?),\s*$/))
+    .filter(Boolean)
+    .map(m => ({ id: m[1], expr: m[2] }));
+  assert(rows.length >= 4, `the table has a row per decidable ticket (found ${rows.length})`);
+
+  const ids = rows.map(r => r.id);
+  for (const { id, expr } of rows) {
+    const flags = [...expr.matchAll(/\b\w+\.(\w+)\b/g)].map(m => m[1]);
+    assert(flags.length > 0, `${id}'s row reads at least one flag (found: ${expr})`);
+    for (const flag of flags) {
+      assert(
+        new RegExp(`G\\.flags\\.${flag}\\s*=\\s*true`).test(sources),
+        `${id}'s row reads ${flag}, and some branch actually sets it (an unset flag means the ticket is never decided)`,
+      );
+    }
+    assert(
+      new RegExp(`addTicket\\(\\s*'${id}'`).test(sources),
+      `${id} is a ticket that actually gets added somewhere (a stale row is dead weight)`,
+    );
+  }
+
+  const decided = topLevelFn('story.js', 'ticketDecided');
+  if (!assert(decided !== null, 'story.js declares a top-level ticketDecided()')) return;
+  assert(
+    decided.includes('TICKET_DECISION'),
+    'ticketDecided() answers out of the table (a second, hardcoded copy of the rules is how the two drift apart)',
+  );
+
+  /* ---- B. every re-add in acts II and III sits behind its own guard ----
+     "its own" is the load-bearing word: guarding the dream ticket on the
+     star ticket's flag would pass a laxer rule and still re-queue half
+     the act. the nearest enclosing `if` has to name the same id. */
+  const BODIES = [['story.js', 'chapter2'], ['finale.js', 'chapter3']];
+  let sites = 0;
+  for (const [file, fn] of BODIES) {
+    const body = topLevelFn(file, fn);
+    if (!assert(body !== null, `${file} still declares a top-level ${fn}()`)) continue;
+    const lines = body.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const add = lines[i].match(/\baddTicket\(\s*'([^']+)'/);
+      if (!add) continue;
+      sites++;
+      const id = add[1];
+      assert(ids.includes(id), `${fn}() re-adds ${id}, and the decision table has a row for it`);
+      let guard = '';
+      for (let j = i - 1; j >= 0; j--) {
+        if (/\bif\s*\(/.test(lines[j])) { guard = lines[j].trim(); break; }
+      }
+      assert(
+        new RegExp(`ticketDecided\\(\\s*'${id}'`).test(guard),
+        `${fn}()'s re-add of ${id} sits behind a guard on ${id}'s own decision (nearest if: ${guard || 'none'})`,
+      );
+    }
+  }
+  assert(sites >= 4, `there are re-add sites in acts II and III to check (found ${sites}, or the rule above is vacuous)`);
+
+  /* ---- C. no gate in those acts waits on the queue ----
+     the open and closed lists come back empty on every load, so a gate
+     that reads either one can never pass on resume — the act simply
+     stops there. this is the assertion section 5 could not write. */
+  let flagGates = 0;
+  for (const [file, fn] of BODIES) {
+    const body = topLevelFn(file, fn);
+    if (body === null) continue;
+    const gates = [...body.matchAll(/\bexplore\((.*)\);/g)].map(m => m[1]);
+    assert(gates.length > 0, `${fn}() still yields to the player through explore()`);
+    for (const g of gates) {
+      if (/ticketDecided\(/.test(g)) flagGates++;
+      assert(
+        !/\bg\.tickets\b|\bg\.closed\b|\bticketOpen\(/.test(g),
+        `${fn}() has no explore() gate keyed on queue state (queue state does not survive a reload) — found: ${g}`,
+      );
+    }
+  }
+  assert(flagGates >= 2, `the ticket gates ask the decision instead (found ${flagGates}, expected one per act)`);
+
+  /* ---- D. the refusal count is derived, never nudged ----
+     mercy is a property of which tickets were refused. incrementing it
+     at the moment of refusal means a replayed act adds to a number that
+     already counted that same refusal — the miscount section 5 named. */
+  for (const f of FILES) {
+    const src = read(f);
+    assert(
+      !/G\.mercy\s*(?:\+\+|\+=)/.test(src) && !/\+\+\s*G\.mercy\b/.test(src),
+      `${f} never raises the refusal count in place (that is what double-counts a replayed refusal)`,
+    );
+  }
+
+  const mercyFn = topLevelFn('story.js', 'mercyFromFlags');
+  if (!assert(mercyFn !== null, 'story.js declares a top-level mercyFromFlags()')) return;
+  const refusals = [...(mercyFn.match(/return[\s\S]*$/) || [''])[0].matchAll(/\b[a-z]\.(\w+)\b/g)].map(m => m[1]);
+
+  const assigns = [];
+  for (const f of FILES) {
+    read(f).split('\n').forEach((line, i) => {
+      if (/\bG\.mercy\s*=[^=]/.test(line)) assigns.push({ f, ln: i + 1, line: line.trim(), i });
+    });
+  }
+  assert(assigns.length >= 3, `there are refusal-count writes to check (found ${assigns.length})`);
+  for (const a of assigns) {
+    assert(
+      /=\s*mercyFromFlags\(/.test(a.line),
+      `${a.f}:${a.ln} sets the refusal count from the flags (found: ${a.line})`,
+    );
+    // the recompute reads the flags, so the decision has to already be one of
+    // them — set it after, and this refusal is the one the count misses.
+    const above = read(a.f).split('\n').slice(0, a.i).reverse()
+      .map(l => l.trim())
+      .find(l => l !== '' && !l.startsWith('//')) || '';
+    const setFlag = above.match(/^G\.flags\.(\w+)\s*=\s*true;$/);
+    assert(
+      setFlag !== null && refusals.includes(setFlag[1]),
+      `${a.f}:${a.ln} records its refusal flag on the line above, and the count reads that flag (found above: ${above || 'nothing'})`,
+    );
+  }
+  assert(refusals.length >= 3, `the refusal count reads one flag per refusable ticket (found ${refusals.length})`);
+  for (const flag of refusals) {
+    assert(
+      new RegExp(`G\\.flags\\.${flag}\\s*=\\s*true`).test(sources),
+      `the refusal count reads ${flag}, and some branch sets it`,
+    );
+    assert(
+      new RegExp(`\\b\\w+\\.${flag}\\b`).test(tableM[1]),
+      `${flag} also appears in the decision table — a refusal that counts but does not decide would re-queue and then count again`,
+    );
+  }
 });
 
 /* ============================================================

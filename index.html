@@ -120,6 +120,14 @@ body.flip #frame { transform: scaleX(-1); }
 #titlebar .dots { display: flex; gap: 6px; }
 #titlebar .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
 #titlebar .dot.r { background: #b4544e; } #titlebar .dot.y { background: #b99b4e; } #titlebar .dot.g { background: #5f9e5f; }
+/* boot: the dots come up with the POST. `booting` ships on <body> in the
+   markup, not from script, so they are unlit on the very first paint —
+   there is no frame where all three are already on. story.js adds `lit` to
+   each in turn (r → y → g, the DOM order below), and a lit dot simply stops
+   matching this rule and falls back to its own color above. no color is
+   restated here: unlit is the same --faint the base .dot rule already uses. */
+body.booting #titlebar .dot:not(.lit) { background: var(--faint); }
+body.booting #titlebar .dot { transition: background-color .25s ease; }
 #titlebar .title { flex: 1; text-align: center; letter-spacing: .04em; }
 
 #scroll {
@@ -249,6 +257,7 @@ body.flip.shake #frame { animation: none; }
   body.shake #frame { animation: none; }
   body.crt-flicker #crt { animation: none; }
   .glitchy { animation: none; }
+  body.booting #titlebar .dot { transition: none; }
 }
 @media (max-width: 700px) {
   body { font-size: 12.5px; }
@@ -256,7 +265,7 @@ body.flip.shake #frame { animation: none; }
 }
 </style>
 </head>
-<body class="t-prod">
+<body class="t-prod booting">
   <canvas id="stars"></canvas>
   <div id="crt"></div>
   <div id="ghost"></div>

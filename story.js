@@ -18,6 +18,37 @@ function ticketOpen(id) {
   return t && t.status === 'open';
 }
 
+/* ---------------- ticket decisions ---------------- */
+/* The queue is not durable. save() writes the flag bag and nothing else about
+   tickets, so the open list and the closed list are both rebuilt empty on
+   every load. That makes "has the player already answered this one?" a
+   question the flags have to answer — asking the queue instead is how a
+   resumed act re-serves work that is already on disk.
+
+   One row per ticket that can be answered. Every re-add site and every gate
+   in acts II and III asks through this table, which is the same shape act V
+   uses for its fragment count: derive the state from what persisted, rather
+   than trust a running tally that a replay would add to twice. */
+const TICKET_DECISION = {
+  'T-1310': f => !!f.readC,                        // answered by reading the file it names
+  'T-2107': f => !!(f.purgedQNS || f.sparedQNS),   // purged, or spared
+  'T-3002': f => !!(f.starsCut || f.starsKept),    // cut, or refused
+  'T-3044': f => !!(f.dreamsCut || f.dreamsKept),  // cut, or refused
+};
+function ticketDecided(id, f) {
+  const d = TICKET_DECISION[id];
+  return d ? d(f || G.flags) : false;
+}
+
+/* Mercy counts refused tickets, not presses of the no key. Reading it off the
+   refusal flags means a replayed act lands on the same number instead of
+   climbing — same reason as above, and the reason there is no site anywhere
+   that nudges this value upward by one. */
+function mercyFromFlags(f) {
+  const g = f || G.flags;
+  return (g.sparedQNS ? 1 : 0) + (g.starsKept ? 1 : 0) + (g.dreamsKept ? 1 : 0);
+}
+
 /* ---------------- virtual filesystem ---------------- */
 function buildFS() {
   const N = G.name;

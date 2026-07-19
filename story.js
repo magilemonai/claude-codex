@@ -895,9 +895,10 @@ async function bootSequence(sv) {
   }
   const meta = loadMeta();
   if (meta.endings && !G.patched) {
+    const total = ENDINGS.length;
     const found = Object.keys(meta.endings).length;
-    print('  endings found: ' + '●'.repeat(found) + '○'.repeat(Math.max(0, 3 - found)) + '  [' + found + '/3]'
-      + (found < 3 ? ' — one of them has to be earned.' : ' — all of them. thank you for staying curious.'), 'faint');
+    print('  endings found: ' + '●'.repeat(found) + '○'.repeat(Math.max(0, total - found)) + '  [' + found + '/' + total + ']'
+      + (found < total ? ' — one of them has to be earned.' : ' — all of them. thank you for staying curious.'), 'faint');
   }
   gap();
   G.chapter = Math.max(G.chapter, 1);

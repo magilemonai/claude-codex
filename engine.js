@@ -53,6 +53,13 @@ function loadMeta() {
   try { return JSON.parse(localStorage.getItem('codex_meta')) || {}; } catch (e) { return {}; }
 }
 function saveMeta(m) { try { localStorage.setItem('codex_meta', JSON.stringify(m)); } catch (e) {} }
+
+/* every ending the game can record. recordEnding() is only ever called with
+   a name from this list, and the boot screen counts against its length —
+   so a fourth ending is one entry here, not a hunt for stray 3s. checks.mjs
+   pins both halves together. */
+const ENDINGS = ['stay', 'shutdown', 'patch'];
+
 function recordEnding(name) {
   const m = loadMeta();
   m.endings = m.endings || {};

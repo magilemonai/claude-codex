@@ -590,6 +590,147 @@ section('save timing: every command persists, no unload handler', () => {
 });
 
 /* ============================================================
+   6. boot POST — chrome that never holds the player up
+   the claim: bootSequence() runs the power-on self test before the
+   CODEX art; the player can cut it short at any moment from either
+   input path; prefers-reduced-motion gets the whole block with no
+   motion at all; and its cues go through snd.* rather than reaching
+   for an oscillator of their own.
+   seams: story.js's `const POST_LINES`, its `async function
+   meridianPOST()`, the meridianPOST() call site in bootSequence(),
+   and the `if (reduced)` branch inside the POST.
+
+   Section 4 already owns the global "no oscillator outside snd" rule
+   for all three files. Group D below is the POST-local form of it —
+   the seam a regression in *this* feature would disturb — so the two
+   are deliberately different scopes, not a duplicate.
+   ============================================================ */
+section('boot POST: skippable, reduced-motion-safe, snd-only', () => {
+  const story = read('story.js');
+
+  const post = topLevelFn('story.js', 'meridianPOST');
+  if (!assert(post !== null, 'story.js still declares a top-level meridianPOST()')) return;
+
+  /* brace-balanced slice from a marker. safe here (and only here)
+     because nothing inside meridianPOST() puts a brace in a string —
+     POST_LINES is flat text and the closures are balanced code. */
+  function blockAt(src, marker) {
+    const start = src.indexOf(marker);
+    if (start === -1) return null;
+    const braceAt = src.indexOf('{', start);
+    if (braceAt === -1) return null;
+    let depth = 0;
+    for (let i = braceAt; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}' && --depth === 0) return src.slice(start, i + 1);
+    }
+    return null;
+  }
+
+  /* ---- A. the POST runs, and runs before the art ----
+     ordering is the whole point: a POST printed after the CODEX banner
+     is not a power-on self test, it is a footnote. */
+  const boot = topLevelFn('story.js', 'bootSequence');
+  if (!assert(boot !== null, 'story.js still declares a top-level bootSequence()')) return;
+  const postAt = boot.indexOf('meridianPOST(');
+  const artAt = boot.indexOf('title-art');
+  assert(postAt !== -1, 'bootSequence() calls meridianPOST()');
+  assert(/await\s+meridianPOST\s*\(\s*\)/.test(boot), 'bootSequence() awaits meridianPOST() (an un-awaited POST types over the art)');
+  assert(artAt !== -1, "bootSequence() still prints the CODEX art as 'title-art' (or the ordering check below is vacuous)");
+  assert(
+    postAt !== -1 && artAt !== -1 && postAt < artAt,
+    'meridianPOST() is called before the boot art',
+  );
+
+  // the three beats the POST was asked to hit, pinned as content.
+  const linesDecl = story.match(/const\s+POST_LINES\s*=\s*\[([\s\S]*?)\n\];/);
+  if (!assert(linesDecl !== null, 'story.js declares `const POST_LINES = [...]` we can read statically')) return;
+  const postLines = linesDecl[1];
+  assert([...postLines.matchAll(/\[\s*'/g)].length >= 3, 'POST_LINES has at least three log lines');
+  for (const [beat, needle] of [['the motd', 'motd:'], ["VERA's handshake", 'VERA'], ['the mounting reality/ wink', 'mounting reality/']]) {
+    assert(postLines.includes(needle), `POST_LINES still carries ${beat} (looked for "${needle}")`);
+  }
+
+  /* ---- B. a skip check lives inside the typing loop ----
+     the per-character loop is the only place that can strand a player:
+     without a check in the loop body, a keypress is swallowed until the
+     current line finishes typing. so pin the check to the loop itself,
+     not merely to the function containing one somewhere. */
+  const typeLoop = blockAt(post, 'for (let i = 0');
+  if (!assert(typeLoop !== null, 'meridianPOST() still types character-by-character in a `for (let i = 0; ...)` loop')) return;
+  assert(
+    /if\s*\(\s*skip\(\)\s*\)/.test(typeLoop),
+    'the typing loop checks skip() on every character (otherwise a keypress waits out the current line)',
+  );
+  assert(
+    /el\.textContent\s*=\s*text\s*;\s*break\s*;/.test(typeLoop),
+    'the skip branch fills the rest of the line and breaks (a skip that only stops typing leaves the line truncated)',
+  );
+
+  // and skip() must actually be wired to the engine's two input signals.
+  const skipFn = post.match(/const\s+skip\s*=\s*\(\)\s*=>([^;]+);/);
+  if (!assert(skipFn !== null, 'meridianPOST() defines a `const skip = () => ...` predicate')) return;
+  for (const sig of ['skipTyping', 'skipRequested']) {
+    assert(skipFn[1].includes(sig), `skip() reads the engine's ${sig} (engine.js's global keydown drives both)`);
+  }
+
+  // click is the other half of "any key or click" — the engine's global
+  // click handler does NOT bump skipRequested, so the POST must listen
+  // for itself, and must clean both listeners up when it is done.
+  for (const ev of ['keydown', 'click']) {
+    assert(
+      new RegExp(`addEventListener\\(\\s*'${ev}'`).test(post),
+      `meridianPOST() listens for ${ev} to cut the POST short`,
+    );
+    assert(
+      new RegExp(`removeEventListener\\(\\s*'${ev}'`).test(post),
+      `meridianPOST() removes its ${ev} listener when done (a leaked listener outlives the boot)`,
+    );
+  }
+  assert(post.includes('finally'), 'the listeners come off in a finally block (so a throw mid-POST cannot leak them)');
+
+  /* ---- C. the reduced-motion branch prints instantly ----
+     "instantly" is the assertion, not "differently": a branch that
+     still awaits a sleep is just a second animation. */
+  assert(
+    /matchMedia\(\s*'\(prefers-reduced-motion:\s*reduce\)'\s*\)/.test(post),
+    "meridianPOST() branches on matchMedia('(prefers-reduced-motion: reduce)')",
+  );
+  const reducedBranch = blockAt(post, 'if (reduced)');
+  if (!assert(reducedBranch !== null, 'meridianPOST() has an `if (reduced) { ... }` branch')) return;
+  assert(
+    /for\s*\(.*of\s+POST_LINES\s*\)\s*print\(/.test(reducedBranch),
+    'the reduced-motion branch prints every POST_LINES entry',
+  );
+  assert(
+    !/sleep\s*\(/.test(reducedBranch),
+    'the reduced-motion branch awaits no sleep() — the lines appear at once',
+  );
+  assert(
+    /return\s*;/.test(reducedBranch),
+    'the reduced-motion branch returns rather than falling through into the typing loop',
+  );
+
+  /* ---- D. every POST cue goes through snd.* ---- */
+  const cues = [...post.matchAll(/\bsnd\.(\w+)\s*\(/g)].map(m => m[1]);
+  assert(cues.length > 0, 'meridianPOST() makes at least one sound through snd.* (or the rule below is vacuous)');
+  for (const bare of ['createOscillator', 'AudioContext', 'createGain']) {
+    assert(
+      !post.includes(bare),
+      `meridianPOST() never touches ${bare} directly — all audio goes through snd.*, which is where the G.muted guard lives`,
+    );
+  }
+
+  /* ---- E. index.html stays out of it ----
+     the POST reads the reduced-motion preference in JS; the existing
+     CSS @media block is not its mechanism, and this mission promised
+     not to touch the page. */
+  const html = read('index.html');
+  assert(!html.includes('meridianPOST'), 'index.html does not reference meridianPOST (the POST is script-side only)');
+  assert(!html.includes('POST_LINES'), 'index.html does not reference POST_LINES');
+});
+
+/* ============================================================
    next mission appends its section() above this line
    ============================================================ */
 
